@@ -120,6 +120,11 @@ struct List {
     uploads: std::sync::Mutex<Vec<Upload>>,
     #[cfg(windows)]
     host: Option<crate::host::HostList>,
+    /// Whether `host` is made when the list first records ([`ensure`],
+    /// [`lazy_host`]) instead of with the list: a list the title makes and
+    /// never records into then holds none.
+    #[cfg(windows)]
+    lazy: bool,
     #[cfg(windows)]
     state: std::sync::Mutex<crate::draw::State>,
     /// The parts of the recording before `host`, in order, each closed: the
@@ -210,20 +215,65 @@ impl TitleOp {
 impl Drop for TitleOp {
     fn drop(&mut self) {
         if crate::host::passtimes::on()
-            && let Some(list) = host_list(self.0)
+            && let Some(list) = peek_host_list(self.0)
         {
             list.pass_end();
         }
     }
 }
 
+/// The host list a title list records into, made first if the list has
+/// none yet ([`ensure`]): for the list's recording calls.
 pub(crate) fn host_list<'a>(this: This) -> Option<&'a crate::host::HostList> {
+    if this.is_null() {
+        return None;
+    }
+    // SAFETY: the title passes one of our lists; a list is recorded by one
+    // thread at a time and is not submitted while it records.
+    ensure(unsafe { &mut *this.cast_mut().cast::<List>() })
+}
+
+/// The host list a title list has now, if any; none is made (closes,
+/// resets and submissions of a list that never recorded).
+pub(crate) fn peek_host_list<'a>(this: This) -> Option<&'a crate::host::HostList> {
     if this.is_null() {
         return None;
     }
     // SAFETY: the title passes one of our lists.
     unsafe { (*this.cast::<List>()).host.as_ref() }
 }
+
+/// The list's host list, made now (one that has run, or new) if the list
+/// makes its host list lazily and has none: it is open, as a title's list
+/// is when it is made or after its reset, and the draw state the title set
+/// is applied at the draws from `state`, as for a list made with its host
+/// list.
+fn ensure(list: &mut List) -> Option<&crate::host::HostList> {
+    if list.host.is_none() && list.lazy {
+        list.host = fresh_list();
+        if list.host.is_some() {
+            LAZY_MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    list.host.as_ref()
+}
+
+/// (`VICTORY_LAZY_HOST_LIST`, on unless `=0`) Whether a title list gets its
+/// host list when it first records, and gives it back at its submission
+/// instead of taking another for its next reset. A host list is two
+/// command allocators and lists with the driver's memory for them, about
+/// 0.7 MB of private memory each (a probe: 1,000 empty ones took 728 MB,
+/// 234 MB of it write-combined); 481 of the 1,093 host lists alive in a
+/// gameplay run belonged to title lists the title made and never reset,
+/// and every title list waiting for its next reset held one more.
+pub(crate) fn lazy_host() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("VICTORY_LAZY_HOST_LIST").is_none_or(|v| v != "0"))
+}
+
+/// Host lists taken by title lists at a first recording since the start
+/// ([`ensure`]).
+pub(crate) static LAZY_MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// The host side of a submitted list, taken from it: a queue that waits
 /// for a fence runs it later, and the title may reset the list meanwhile.
@@ -407,7 +457,7 @@ fn cut(this: This, wait: ValueWait) {
     // SAFETY: the title passes one of our lists; a list is recorded by one
     // thread at a time and is not submitted while it records.
     let list = unsafe { &mut *this.cast_mut().cast::<List>() };
-    let Some(current) = list.host.as_ref() else {
+    let Some(current) = ensure(list) else {
         return;
     };
     if current.untouched() {
@@ -491,16 +541,10 @@ pub(crate) fn detach_parts(lists: &[This]) -> Parts {
             }
             continue;
         }
-        let Some(fresh) = fresh_list() else {
-            continue;
-        };
-        // A new host list is open; the title's next call on its list is a
-        // reset, which wants it closed.
-        fresh.close();
         // SAFETY: one of our lists, closed and submitted: nothing records
         // into it until the title resets it.
         let list = unsafe { &mut *this.cast_mut().cast::<List>() };
-        let Some(host) = list.host.replace(fresh) else {
+        let Some(host) = take_host(list) else {
             continue;
         };
         let earlier = std::mem::take(&mut list.earlier);
@@ -548,6 +592,23 @@ pub(crate) fn detach_parts(lists: &[This]) -> Parts {
     parts
 }
 
+/// The host list of a submitted title list, taken for its run. A list that
+/// makes its host list lazily is left none (its next recording after the
+/// reset takes one, [`ensure`]), and one that never recorded gives none:
+/// there is nothing to run. Any other is left a new, closed host list for
+/// its next reset (none taken if there is none to leave).
+#[cfg(windows)]
+fn take_host(list: &mut List) -> Option<crate::host::HostList> {
+    if list.lazy {
+        return list.host.take();
+    }
+    let fresh = fresh_list()?;
+    // A new host list is open; the title's next call on its list is a
+    // reset, which wants it closed.
+    fresh.close();
+    list.host.replace(fresh)
+}
+
 /// Takes the host sides of submitted lists (each once, however often the
 /// submission names it) and leaves each list a new, closed host list for
 /// its next reset: what was taken, and which of them run in what order.
@@ -563,17 +624,11 @@ pub(crate) fn detach(lists: &[This]) -> (Vec<Detached>, Vec<usize>) {
             order.push(i);
             continue;
         }
-        let Some(fresh) = fresh_list() else {
-            continue;
-        };
-        // A new host list is open; the title's next call on its list is a
-        // reset, which wants it closed.
-        fresh.close();
         let list = this.cast_mut().cast::<List>();
         // SAFETY: one of our lists, closed and submitted: nothing records
         // into it until the title resets it.
         let (host, uploads, state) = unsafe {
-            let Some(host) = (*list).host.replace(fresh) else {
+            let Some(host) = take_host(&mut *list) else {
                 continue;
             };
             let uploads =
@@ -694,13 +749,15 @@ fn boxed(kind: u32, pipeline: This, thin: bool) -> Box<List> {
         newer: [0; 256],
         uploads: Default::default(),
         #[cfg(windows)]
-        host: crate::host::host().filter(|_| !thin).and_then(|h| match h.new_list() {
+        host: crate::host::host().filter(|_| !thin && !lazy_host()).and_then(|h| match h.new_list() {
             Ok(list) => Some(list),
             Err(e) => {
                 tracing::warn!(error = %e, "no host command list");
                 None
             }
         }),
+        #[cfg(windows)]
+        lazy: !thin && lazy_host() && crate::host::host().is_some(),
         #[cfg(windows)]
         state: {
             let mut state = crate::draw::State::default();
@@ -744,7 +801,7 @@ extern "system" fn list_type(this: This) -> u32 {
 extern "system" fn close(this: This) -> HRESULT {
     let _called = crate::timeline::span("the title's Close");
     #[cfg(windows)]
-    if let Some(host) = host_list(this) {
+    if let Some(host) = peek_host_list(this) {
         host.close();
     }
     S_OK
@@ -774,10 +831,19 @@ extern "system" fn reset(this: This, allocator: This, pipeline: This) -> HRESULT
         list.gate.clear();
     }
     #[cfg(windows)]
-    with_state(this, |host, state| {
-        host.reset();
-        state.reset(pipeline);
-    });
+    if peek_host_list(this).is_some() {
+        with_state(this, |host, state| {
+            host.reset();
+            state.reset(pipeline);
+        });
+    } else {
+        // No host list (one that makes it lazily and never recorded, or
+        // gave it back at its submission): the next recording call takes
+        // one, open; the draw state starts again here as with one.
+        // SAFETY: the title passes one of our lists.
+        let list = unsafe { &*this.cast::<List>() };
+        list.state.lock().unwrap_or_else(|e| e.into_inner()).reset(pipeline);
+    }
     crate::pipeline::bound(pipeline);
     #[cfg(not(windows))]
     let _ = this;
@@ -2337,7 +2403,7 @@ fn value_written(this: This, address: u64, value: u64) {
         // SAFETY: the title passes one of our lists; a list is recorded by
         // one thread at a time and is not submitted while it records.
         let list = unsafe { &mut *this.cast_mut().cast::<List>() };
-        let Some(current) = list.host.as_ref() else {
+        let Some(current) = ensure(list) else {
             return;
         };
         let Some(fresh) = fresh_list() else {

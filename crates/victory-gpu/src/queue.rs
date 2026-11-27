@@ -146,7 +146,7 @@ fn submit_cut(this: This, lists: &[This]) {
     crate::capture::op(this as usize, || {
         let named: Vec<String> = lists
             .iter()
-            .map(|&l| match crate::list::host_list(l) {
+            .map(|&l| match crate::list::peek_host_list(l) {
                 Some(h) => format!("{:#x}", std::ptr::from_ref(h) as usize),
                 None => format!("title {l:?}"),
             })
@@ -166,7 +166,7 @@ fn submit_cut(this: This, lists: &[This]) {
     } else if first > 0 {
         let now: Vec<_> = lists[..first]
             .iter()
-            .filter_map(|&l| crate::list::host_list(l))
+            .filter_map(|&l| crate::list::peek_host_list(l))
             .collect();
         host.execute(&now);
         // They have run: their descriptor tables' slots are free again, as
@@ -227,7 +227,7 @@ fn submit_split(this: This, lists: &[This]) {
     crate::capture::op(this as usize, || {
         let named: Vec<String> = lists
             .iter()
-            .map(|&l| match crate::list::host_list(l) {
+            .map(|&l| match crate::list::peek_host_list(l) {
                 Some(h) => format!("{:#x}", std::ptr::from_ref(h) as usize),
                 None => format!("title {l:?}"),
             })
@@ -241,7 +241,7 @@ fn submit_split(this: This, lists: &[This]) {
     if cut > 0 {
         let now: Vec<_> = lists[..cut]
             .iter()
-            .filter_map(|&l| crate::list::host_list(l))
+            .filter_map(|&l| crate::list::peek_host_list(l))
             .collect();
         host.execute(&now);
     }
@@ -630,7 +630,7 @@ extern "system" fn execute(this: This, count: u32, lists: *const This) {
             // The lists as the frame's other lines name them (their host sides).
             let named: Vec<String> = lists
                 .iter()
-                .map(|&l| match crate::list::host_list(l) {
+                .map(|&l| match crate::list::peek_host_list(l) {
                     Some(h) => format!("{:#x}", std::ptr::from_ref(h) as usize),
                     None => format!("title {l:?}"),
                 })
@@ -642,7 +642,7 @@ extern "system" fn execute(this: This, count: u32, lists: *const This) {
         }
         let host_lists: Vec<_> = lists
             .iter()
-            .filter_map(|&l| crate::list::host_list(l))
+            .filter_map(|&l| crate::list::peek_host_list(l))
             .collect();
         host.execute(&host_lists);
         crate::list::tables_done(lists);

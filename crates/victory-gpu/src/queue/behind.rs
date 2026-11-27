@@ -783,7 +783,7 @@ fn jobs_of(this: This, lists: &[This]) -> Vec<Job> {
     crate::capture::op(queue, || {
         let named: Vec<String> = lists
             .iter()
-            .map(|&l| match crate::list::host_list(l) {
+            .map(|&l| match crate::list::peek_host_list(l) {
                 Some(h) => format!("{:#x}", std::ptr::from_ref(h) as usize),
                 None => format!("title {l:?}"),
             })
