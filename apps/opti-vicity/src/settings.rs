@@ -244,6 +244,10 @@ pub fn environment(cfg: &Config, game: &Path, cache: &Path) -> Vec<(String, Stri
         ("VICTORY_AMBIENT_AIR", "1.5"),
         // First visits: wait up to 2 s for a pipeline still compiling instead of skipping the draw.
         ("VICTORY_PIPELINE_WAIT_MS", "2000"),
+        // Pipelines with static samplers kept in the library too: the 3080 Ti
+        // reads them right when loaded in another process (examples/
+        // sampler_order_probe), and ~1,600 are then not compiled each session.
+        ("VICTORY_LIBRARY_STATIC_SAMPLERS", "1"),
     ];
     set.extend(fixed.iter().map(|&(k, v)| (k.to_owned(), v.to_owned())));
     set.push((
