@@ -21,6 +21,10 @@ const LONGEST: Duration = Duration::from_secs(180);
 /// As the runs count one that takes long.
 const SLOW_MS: f64 = 1000.0;
 
+/// "progress <made> of <to make>" lines for a front end (`VICTORY_PROGRESS=1`).
+static PROGRESS: std::sync::LazyLock<bool> =
+    std::sync::LazyLock::new(|| std::env::var_os("VICTORY_PROGRESS").is_some_and(|v| v == "1"));
+
 fn folder() -> Result<PathBuf> {
     let cfg = victory_core::Config::load()?;
     Ok(cfg.cache_subdir("shaders")?.with_file_name("pipelines"))
@@ -68,6 +72,9 @@ pub fn run(jobs: Option<usize>, limit: Option<usize>, again: bool, used: bool, t
         bad.len(),
         all.len()
     );
+    if *PROGRESS {
+        println!("progress 0 of {}", all.len());
+    }
     let chunks: Vec<&[usize]> = all.chunks(AT_ONCE).collect();
     let next = AtomicUsize::new(0);
     let state = Mutex::new((Vec::<f64>::new(), 0usize, 0usize));
@@ -91,6 +98,10 @@ pub fn run(jobs: Option<usize>, limit: Option<usize>, again: bool, used: bool, t
                             let count = state.0.len();
                             if count % 1000 == 0 {
                                 println!("{count} of {}, {:.0} s", all.len(), began.elapsed().as_secs_f64());
+                            }
+                            // For a front end's progress bar (`VICTORY_PROGRESS=1`).
+                            if count % 10 == 0 && *PROGRESS {
+                                println!("progress {count} of {}", all.len());
                             }
                             drop(state);
                             let _ = writeln!(lock(&done_out), "{fingerprint} {}", keys[n]);

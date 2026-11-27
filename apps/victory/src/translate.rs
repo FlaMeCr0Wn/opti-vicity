@@ -414,10 +414,20 @@ pub fn precompile(paths: Vec<PathBuf>, jobs: Option<usize>) -> Result<()> {
             };
             let jobs = sources(&data);
             let next = AtomicUsize::new(0);
+            // For a front end's progress bar (`VICTORY_PROGRESS=1`, the opti-vicity
+            // launcher): "progress <looked at> of <found>" every 100 shaders.
+            let progress = std::env::var_os("VICTORY_PROGRESS").is_some_and(|v| v == "1");
+            if progress {
+                println!("progress 0 of {}", jobs.len());
+            }
             std::thread::scope(|s| {
                 for _ in 0..threads.min(jobs.len()) {
                     s.spawn(|| {
                         while let Some(job) = jobs.get(next.fetch_add(1, Ordering::Relaxed)) {
+                            let looked = next.load(Ordering::Relaxed).min(jobs.len());
+                            if progress && looked.is_multiple_of(100) {
+                                println!("progress {looked} of {}", jobs.len());
+                            }
                             let Some(bytes) = job.bytes() else { continue };
                             let hash = blake3::hash(&bytes);
                             if !lock(&seen).insert(hash) {
