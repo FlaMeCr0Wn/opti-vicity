@@ -11,6 +11,8 @@ fn main() {
 }
 
 #[cfg(windows)]
+mod crash;
+#[cfg(windows)]
 mod diag;
 #[cfg(windows)]
 mod settings;
@@ -51,7 +53,7 @@ mod ui {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         AdjustWindowRectEx, CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, DispatchMessageW,
         GetMessageW, GetSystemMetrics, IDC_ARROW, IsDialogMessageW, LoadCursorW, LoadIconW,
-        MB_ICONWARNING, MB_OK, MSG, MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassExW,
+        MB_ICONERROR, MB_ICONWARNING, MB_OK, MSG, MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassExW,
         SM_CXSCREEN, SM_CYSCREEN, SW_MINIMIZE, SW_RESTORE, SW_SHOW, SW_SHOWNORMAL, SendMessageW,
         SetForegroundWindow, SetWindowTextW, ShowWindow, TranslateMessage, WM_APP, WM_CLOSE,
         WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLORSTATIC, WM_DESTROY, WM_PAINT, WM_SETFONT,
@@ -1109,6 +1111,16 @@ mod ui {
                     ),
                     Err(why) => status(&format!("{}: {why}", t("Não consegui baixar o DLSS", "Could not get DLSS")), RED),
                 }
+            }
+            Event::Crashed(report) => {
+                status(
+                    &format!("{}: {}", t("O jogo fechou com erro", "The game closed with an error"), report.short),
+                    RED,
+                );
+                let text = wide(&report.detail);
+                let caption = wide(t("O jogo fechou com erro", "The game closed with an error"));
+                // SAFETY: NUL-terminated texts that outlive the call; our window as owner.
+                unsafe { MessageBoxW(h(c.window), text.as_ptr(), caption.as_ptr(), MB_OK | MB_ICONERROR) };
             }
             Event::Blocked => {
                 status(

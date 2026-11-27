@@ -155,6 +155,12 @@ it:
 - **F1 options menu** (`crates/victory-gpu/src/menu.rs`, drawn by the overlay thread), after VIctory-NVIDIA's: frame
   generation (live), upscaler, render scale, console and the overlay; saved into `launcher.ini`, and "save and restart"
   ends the game with code 82 for the launcher to start it again.
+- **Open water without dark blocks on NVIDIA** (`crates/victory-gpu/src/pipeline/make.rs`, from VIctory-NVIDIA 35c1560):
+  the water's two tiled light programs leave whole tiles of the sea dark on 32-lane cards and are left out there
+  (darker, bluer water; `VICTORY_WATER_LIGHT=1` runs them).
+- **Crash notice in the launcher** (`apps/opti-vicity/src/crash.rs`): when the game closes with an error, the launcher
+  reads `game.log` and shows the cause, what to try and the log's lines (exception and stack, engine error, lost device,
+  full paging file); Ctrl+C copies it.
 
 ## Build from source
 
@@ -242,7 +248,7 @@ opti-vicity stands on these projects. Their READMEs are kept in
 | [Yaekai/victory-scarlett-3070](https://github.com/Yaekai/victory-scarlett-3070) | The base of opti-vicity: NVIDIA heap fixes, visual fixes, the 60 fps unlock and the `play-3070` settings. |
 | [Dolberthi/neptune-dolberth-nvidia-8gb](https://github.com/Dolberthi/neptune-dolberth-nvidia-8gb) | The performance overlay. The overlay itself is by zm0kie. |
 | [zm0kiemedia/Neptune_VI](https://github.com/zm0kiemedia/Neptune_VI) | Mouse look and mouse buttons on the stand-in controller. |
-| [trustno1-coder/VIctory-NVIDIA](https://github.com/trustno1-coder/VIctory-NVIDIA) | DLSS and DLSS frame generation through NVIDIA Streamline, the render-scale patch, the F1 settings menu it inspired, and the way of fetching NVIDIA's files. |
+| [trustno1-coder/VIctory-NVIDIA](https://github.com/trustno1-coder/VIctory-NVIDIA) | DLSS and DLSS frame generation through NVIDIA Streamline, the render-scale patch, the F1 settings menu it inspired, the way of fetching NVIDIA's files and the open-water fix. |
 | [gleaf-6/VIctory-7900XTX-](https://github.com/gleaf-6/VIctory-7900XTX-) | AMD FSR 3 frame generation on the host. |
 
 The git history keeps the line: `ee36438` imports Yaekai's master as it was on 2026-11-26, and the commits after it are

@@ -33,6 +33,8 @@ pub enum Event {
     /// Smart App Control or another application-control policy (the log
     /// says so; shown after `Exited`).
     Blocked,
+    /// The game closed with an error: why, as its log tells (shown after `Exited`).
+    Crashed(crate::crash::Report),
     /// The NVIDIA files were fetched (or why not).
     NvidiaFetched(Result<(), String>),
 }
@@ -223,19 +225,25 @@ fn run(plan: &Plan, post: &impl Fn(Event)) {
         crate::diag::summarize(dir, &seen);
     }
     post(Event::Exited(code, session));
-    if code != Some(0) && blocked_by_app_control(&log_tail(&log_path)) {
-        post(Event::Blocked);
+    if code != Some(0) && code != Some(82) {
+        let log = log_tail(&log_path);
+        if blocked_by_app_control(&log) {
+            post(Event::Blocked);
+        } else {
+            post(Event::Crashed(crate::crash::explain(&log, code, settings::portuguese())));
+        }
     }
 }
 
-/// The last 64 KiB of the game log (the error is the run's last line).
+/// The last MiB of the game log (the error is near the run's end; the
+/// memory warnings may be earlier).
 fn log_tail(path: &std::path::Path) -> String {
     use std::io::{Read, Seek, SeekFrom};
     let Ok(mut file) = std::fs::File::open(path) else {
         return String::new();
     };
     let len = file.metadata().map_or(0, |m| m.len());
-    let _ = file.seek(SeekFrom::Start(len.saturating_sub(64 * 1024)));
+    let _ = file.seek(SeekFrom::Start(len.saturating_sub(1024 * 1024)));
     let mut bytes = Vec::new();
     let _ = file.read_to_end(&mut bytes);
     String::from_utf8_lossy(&bytes).into_owned()
