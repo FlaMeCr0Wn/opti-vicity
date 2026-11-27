@@ -11,6 +11,28 @@ pub struct Report {
     pub short: String,
     /// The whole notice: the cause, what to try and the log's lines.
     pub detail: String,
+    /// The programs whose pipeline the driver was making when the game
+    /// stopped ([`left_out_programs`]): the launcher leaves them out next time.
+    pub leave_out: Vec<String>,
+}
+
+/// The programs (16-digit hashes) of the host pipeline the stopped thread
+/// was making, from the engine's "while making the host pipeline of
+/// [compute 240cb516c1af0bc3]" under the last unhandled exception.
+pub fn left_out_programs(log: &str) -> Vec<String> {
+    let lines: Vec<&str> = log.lines().collect();
+    let Some(at) = lines.iter().rposition(|s| s.contains("unhandled exception 0x")) else {
+        return Vec::new();
+    };
+    lines[at + 1..]
+        .iter()
+        .map(|s| s.trim())
+        .take_while(|s| !s.starts_with('#'))
+        .filter_map(|s| s.strip_prefix("while making the host pipeline of "))
+        .flat_map(|s| s.split(|c: char| !c.is_ascii_alphanumeric()))
+        .filter(|w| w.len() == 16 && w.bytes().all(|b| b.is_ascii_hexdigit()))
+        .map(str::to_ascii_lowercase)
+        .collect()
 }
 
 /// A text in the user's language.
@@ -58,6 +80,28 @@ fn exception_name(code: u32, pt: bool) -> String {
 
 /// Where a known stop of the title is, what it means and what to try.
 fn known_place(place: &str, pt: bool) -> Option<(String, String)> {
+    // AMD's shader compiler, making a pipeline of the title's programs.
+    if place.to_ascii_lowercase().starts_with("amdxc64.dll+") {
+        return Some((
+            l(pt, "o compilador de shaders do driver AMD travou ao preparar um shader do jogo", "AMD's driver shader compiler crashed making one of the game's shaders"),
+            l(
+                pt,
+                "Use a versão mais nova do opti-vicity (ela evita o caso conhecido, amdxc64+0x861b9f) e atualize o driver da AMD. Se continuar, mande o game.log (botão Logs).",
+                "Use the newest opti-vicity (it avoids the known case, amdxc64+0x861b9f) and update the AMD driver. If it goes on, send game.log (the Logs button).",
+            ),
+        ));
+    }
+    // NVIDIA's D3D12 driver.
+    if place.to_ascii_lowercase().starts_with("nvwgf2umx.dll+") {
+        return Some((
+            l(pt, "o driver da NVIDIA travou", "NVIDIA's driver crashed"),
+            l(
+                pt,
+                "Atualize o driver da NVIDIA e tente com a geração de quadros desligada. Se continuar, mande o game.log (botão Logs).",
+                "Update the NVIDIA driver and try with frame generation off. If it goes on, send game.log (the Logs button).",
+            ),
+        ));
+    }
     // The image's name carries the build; the offset is what counts.
     let offset = place.rsplit_once('+').map(|(_, o)| o.to_ascii_lowercase())?;
     if !place.contains("victory-image-b99f876b74d4a77f") {
@@ -99,6 +143,11 @@ pub fn explain(log: &str, code: Option<i32>, pt: bool) -> Report {
     if let Some(at) = lines.iter().rposition(|s| s.contains("unhandled exception 0x")) {
         let line = lines[at].trim();
         technical.push(line.trim_start_matches("VIctory: ").to_owned());
+        if let Some(doing) =
+            lines[at + 1..].iter().map(|s| s.trim()).take_while(|s| !s.starts_with('#')).find(|s| s.starts_with("while "))
+        {
+            technical.push(format!("  {doing}"));
+        }
         technical.extend(
             lines[at + 1..]
                 .iter()
@@ -175,12 +224,32 @@ pub fn explain(log: &str, code: Option<i32>, pt: bool) -> Report {
             )
         });
     }
-    // The PC's memory was close to its limit during the run.
-    let pressure = lines.iter().rev().find(|s| s.contains("host memory pressure")).and_then(|s| {
-        s.split_whitespace()
-            .find_map(|w| w.strip_prefix("available_commit_mib="))
-            .and_then(|v| v.parse::<u64>().ok())
-    });
+    // Allocations refused with E_OUTOFMEMORY: the driver crash that often
+    // follows is a consequence, so the memory is named as the cause.
+    let refused = lines.iter().filter(|s| s.contains("0x8007000E") || s.contains("0x8007000e")).count();
+    if refused > 0 && !commit_full {
+        cause = Some(l(pt, "a memória acabou (da placa de vídeo ou do PC) e o jogo não conseguiu mais reservar memória", "memory ran out (the graphics card's or the PC's) and the game could no longer reserve any"));
+        advice = Some(l(
+            pt,
+            "Escolha Memória da placa \"8 GB (texturas menores)\", use uma Resolução menor, desmarque Series X, feche programas pesados (navegador, Discord) e deixe um arquivo de paginação grande.",
+            "Pick card memory \"8 GB (smaller textures)\", use a lower Resolution, untick Series X, close heavy programs (browser, Discord) and keep a large paging file.",
+        ));
+        if let Some(first) = lines.iter().find(|s| s.contains("0x8007000E") || s.contains("0x8007000e")) {
+            technical.push(format!("{refused}x {}", first.trim()));
+        }
+    }
+    // The PC's memory was close to its limit during the run (under 4 GB of
+    // free virtual memory; above that the warning is routine).
+    let pressure = lines
+        .iter()
+        .rev()
+        .find(|s| s.contains("host memory pressure"))
+        .and_then(|s| {
+            s.split_whitespace()
+                .find_map(|w| w.strip_prefix("available_commit_mib="))
+                .and_then(|v| v.parse::<u64>().ok())
+        })
+        .filter(|mib| *mib < 4096);
 
     let cause = cause.unwrap_or_else(|| match code {
         Some(c) => format!("{} {:#x}", exception_name(c as u32, pt), c as u32),
@@ -192,6 +261,23 @@ pub fn explain(log: &str, code: Option<i32>, pt: bool) -> Report {
             "\n\n{} {:.1} GB.",
             l(pt, "A memória do PC estava quase no limite durante o jogo: memória virtual livre", "The PC's memory was close to its limit during the run: free virtual memory"),
             mib as f64 / 1024.0
+        ));
+    }
+    let leave_out = left_out_programs(&log);
+    if !leave_out.is_empty() {
+        advice = Some(format!(
+            "{} ({}). {}",
+            l(
+                pt,
+                "Abra o jogo de novo: o opti-vicity vai deixar de fora o programa que travou o driver",
+                "Start the game again: opti-vicity will leave out the program that stopped the driver",
+            ),
+            leave_out.join(", "),
+            l(
+                pt,
+                "Pode faltar algum efeito na tela. Para trazê-lo de volta, apague leave-out.txt na pasta do cache. Atualizar o driver também ajuda.",
+                "Some effect may be missing on screen. To bring it back, delete leave-out.txt in the cache folder. Updating the driver helps too.",
+            )
         ));
     }
     let advice = advice.unwrap_or_else(|| {
@@ -216,7 +302,7 @@ pub fn explain(log: &str, code: Option<i32>, pt: bool) -> Report {
             "Ctrl+C copies this notice. To ask for help, also send game.log (the Logs button).",
         )
     ));
-    Report { short: cause, detail }
+    Report { short: cause, detail, leave_out }
 }
 
 #[cfg(test)]
@@ -253,6 +339,10 @@ mod tests {
         assert!(r.detail.contains("Qualidade"));
         let r = explain(&log.replace("2219650", "2237178"), Some(-2147483645), false);
         assert!(r.short.contains("appdata0.rpf"), "{}", r.short);
+        let amd = "VIctory: unhandled exception 0xc0000005 at amdxc64.dll+0x861b9f (read 0x8: nothing mapped there)\n  #0  amdxc64.dll+0x861b9f\n";
+        let r = explain(amd, Some(-1073741819), true);
+        assert!(r.short.contains("driver AMD"), "{}", r.short);
+        assert!(r.detail.contains("amdxc64.dll+0x861b9f"));
     }
 
     #[test]
@@ -279,6 +369,38 @@ mod tests {
         assert!(r.short.contains("acesso inválido") && r.short.contains("0xc0000005"), "{}", r.short);
         let r = explain("", None, false);
         assert_eq!(r.short, "the process was ended");
+    }
+
+    #[test]
+    fn a_pipeline_that_stops_the_driver_is_left_out() {
+        let log = "VIctory: first-chance exception 0xc0000005 at amdxc64.dll+0x861b9f (read 0x8: nothing mapped there)\n\
+                   \x20 while making the host pipeline of [compute 1111111111111111]\n\
+                   VIctory: unhandled exception 0xc0000005 at amdxc64.dll+0x861b9f (read 0x8: nothing mapped there)\n\
+                   \x20 while making the host pipeline of [vertex 240CB516C1AF0BC3, pixel 0123456789abcdef]\n\
+                   \x20 rax 0x0\n\
+                   \x20 #0  amdxc64.dll+0x861b9f\n";
+        assert_eq!(left_out_programs(log), ["240cb516c1af0bc3", "0123456789abcdef"]);
+        let r = explain(log, Some(-1073741819), true);
+        assert_eq!(r.leave_out, ["240cb516c1af0bc3", "0123456789abcdef"]);
+        assert!(r.short.contains("compilador de shaders"), "{}", r.short);
+        assert!(r.detail.contains("deixar de fora") && r.detail.contains("leave-out.txt"), "{}", r.detail);
+        assert!(left_out_programs("VIctory: unhandled exception 0xc0000005 at x.dll+0x1\n  #0 x\n").is_empty());
+    }
+
+    #[test]
+    fn memory_running_out_is_named_over_the_driver_crash() {
+        let log = "WARN victory_gpu::residency: host memory pressure: limiting pid=1 available_commit_mib=17240 x=1\n\
+                   WARN victory_gpu::host: no upload buffer error=Out of memory. (0x8007000E) size=262144\n\
+                   WARN victory_gpu::host: no upload buffer error=Out of memory. (0x8007000E) size=4194304\n\
+                   VIctory: unhandled exception 0xc0000005 at nvwgf2umx.dll+0x34a44a (read 0xc: nothing mapped there)\n\
+                   \x20 #0  nvwgf2umx.dll+0x34a44a\n";
+        let r = explain(log, Some(-1073741819), false);
+        assert!(r.short.contains("memory ran out"), "{}", r.short);
+        assert!(r.detail.contains("8 GB") && r.detail.contains("2x"), "{}", r.detail);
+        // 17 GB of free virtual memory is no note.
+        assert!(!r.detail.contains("close to its limit"), "{}", r.detail);
+        let r = explain(&log.replace("0x8007000E", "0x0"), None, false);
+        assert!(r.short.contains("NVIDIA"), "{}", r.short);
     }
 }
 

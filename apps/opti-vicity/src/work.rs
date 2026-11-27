@@ -114,6 +114,19 @@ fn prepare(plan: &Plan, post: &impl Fn(Event)) -> Result<bool, String> {
         ));
         ok &= step(plan, &["--used".as_ref()], "warm", &log, post)?;
     }
+    // A step the driver ended making a pipeline: that pipeline's programs
+    // are left out from the next start on (the next preparation goes past it).
+    if !ok {
+        let said = log_tail(&log_path);
+        let new = settings::remember_left_out(&plan.cache, &crate::crash::left_out_programs(&said));
+        if !new.is_empty() {
+            post(Event::Phase(format!(
+                "{} {}",
+                t("Programa deixado de fora (travou o driver):", "Program left out (it stopped the driver):"),
+                new.join(", ")
+            )));
+        }
+    }
     // Written only when everything is there: after a first session (nothing
     // written down yet) the next start makes its pipelines ahead.
     if ok && !recorded_none {
@@ -230,7 +243,9 @@ fn run(plan: &Plan, post: &impl Fn(Event)) {
         if blocked_by_app_control(&log) {
             post(Event::Blocked);
         } else {
-            post(Event::Crashed(crate::crash::explain(&log, code, settings::portuguese())));
+            let report = crate::crash::explain(&log, code, settings::portuguese());
+            settings::remember_left_out(&plan.cache, &report.leave_out);
+            post(Event::Crashed(report));
         }
     }
 }

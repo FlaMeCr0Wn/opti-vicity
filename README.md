@@ -160,7 +160,14 @@ it:
   (darker, bluer water; `VICTORY_WATER_LIGHT=1` runs them).
 - **Crash notice in the launcher** (`apps/opti-vicity/src/crash.rs`): when the game closes with an error, the launcher
   reads `game.log` and shows the cause, what to try and the log's lines (exception and stack, engine error, lost device,
-  full paging file); Ctrl+C copies it.
+  full paging file, memory refused with `0x8007000E`); Ctrl+C copies it.
+- **AMD shader compiler crash** (`crates/victory-shader/src/emit/bitcode/opt.rs`, from RAZDA4A-XEN 453597e): a
+  `getDimensions` query is no longer shared between uses, which ended the process in AMD's compiler
+  (`amdxc64.dll+0x861b9f`).
+- **A pipeline that stops the driver is left out next time** (`crates/victory-core/src/doing.rs`,
+  `crates/victory-gpu/src/pipeline/host.rs`): the crash report names the pipeline being made ("while making the host
+  pipeline of ..."), the launcher writes its programs into `leave-out.txt` in the cache, and the engine never makes them
+  again (`VICTORY_LEAVE_OUT`, any build). Deleting the file brings them back.
 
 ## Build from source
 
@@ -250,6 +257,7 @@ opti-vicity stands on these projects. Their READMEs are kept in
 | [zm0kiemedia/Neptune_VI](https://github.com/zm0kiemedia/Neptune_VI) | Mouse look and mouse buttons on the stand-in controller. |
 | [trustno1-coder/VIctory-NVIDIA](https://github.com/trustno1-coder/VIctory-NVIDIA) | DLSS and DLSS frame generation through NVIDIA Streamline, the render-scale patch, the F1 settings menu it inspired, the way of fetching NVIDIA's files and the open-water fix. |
 | [gleaf-6/VIctory-7900XTX-](https://github.com/gleaf-6/VIctory-7900XTX-) | AMD FSR 3 frame generation on the host. |
+| [crossducking/RAZDA4A-XEN](https://github.com/crossducking/RAZDA4A-XEN) | The fix for AMD's shader compiler crash (`getDimensions`). |
 
 The git history keeps the line: `ee36438` imports Yaekai's master as it was on 2026-11-26, and the commits after it are
 opti-vicity's.

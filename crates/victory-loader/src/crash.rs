@@ -594,6 +594,11 @@ unsafe fn report(what: &str, info: *const EXCEPTION_POINTERS, to_file: bool) {
         code as u32,
         locate(at)
     ));
+    // What the stopped thread had noted it was doing (a host pipeline being
+    // made: the opti-vicity launcher leaves its programs out next time).
+    if let Some(doing) = victory_core::doing::now() {
+        line(format!("  while {doing}"));
+    }
     line(format!(
         "  rax {:#x} rbx {:#x} rcx {:#x} rdx {:#x} rsi {:#x} rdi {:#x} rsp {:#x} rbp {:#x}",
         context.Rax,

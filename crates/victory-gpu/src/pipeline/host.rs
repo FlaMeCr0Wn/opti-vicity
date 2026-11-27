@@ -527,6 +527,28 @@ pub(crate) struct HostPipeline {
     pub(crate) state: String,
 }
 
+/// `VICTORY_LEAVE_OUT`: 16-digit program hashes (comma-separated) whose
+/// pipelines are never made, in any build: the opti-vicity launcher writes
+/// there the programs a driver ended the process making (AMD's compiler,
+/// `amdxc64.dll`). Their draws and dispatches go without, as for any
+/// pipeline the host could not make.
+fn left_out_by_hand(hash: &str) -> bool {
+    static HASHES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    let hashes = HASHES.get_or_init(|| {
+        let hashes: Vec<String> = std::env::var("VICTORY_LEAVE_OUT")
+            .unwrap_or_default()
+            .split(',')
+            .map(|h| h.trim().to_ascii_lowercase())
+            .filter(|h| h.len() == 16 && h.bytes().all(|b| b.is_ascii_hexdigit()))
+            .collect();
+        if !hashes.is_empty() {
+            tracing::warn!(?hashes, "programs left out (VICTORY_LEAVE_OUT): their pipelines are not made");
+        }
+        hashes
+    });
+    hashes.iter().any(|h| h == hash)
+}
+
 /// Logs a pipeline that gets no host pipeline, once per reason.
 fn refuse(reason: &'static str, shaders: &[Arc<Shader>]) -> Option<HostPipeline> {
     static SEEN: std::sync::Mutex<Vec<&str>> = std::sync::Mutex::new(Vec::new());
@@ -545,6 +567,12 @@ impl HostPipeline {
         // For the report when the host device is removed: what this thread
         // has in the library from here on.
         super::library::label(format!("{shaders:?}"));
+        if shaders.iter().any(|s| left_out_by_hand(&s.hash)) {
+            return refuse("one of its programs is in VICTORY_LEAVE_OUT (it stopped the card's driver making it)", shaders);
+        }
+        // A driver that ends the process making it names it in the report
+        // (the launcher then leaves it out, `VICTORY_LEAVE_OUT`).
+        let _doing = victory_core::doing::Doing::new(format!("making the host pipeline of {shaders:?}"));
         let find = |stage| shaders.iter().find(|s| s.stage == stage);
         let compute = match shaders {
             [cs] if cs.stage == "compute" => Some(cs),

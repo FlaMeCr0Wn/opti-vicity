@@ -943,6 +943,14 @@ impl Module {
             Op::Cmp(p, a, b) => Key::Cmp(*p, *a, *b),
             Op::Select(c, t, f) => Key::Select(*c, *t, *f),
             Op::Extract(a, n) => Key::Extract(*a, *n),
+            // A size query stays where the lowering put it: AMD's D3D12
+            // compiler ends the process (amdxc64.dll+0x861b9f, read of 0x8)
+            // making the pipeline of some compute programs when one
+            // `getDimensions` serves the uses of another below it (29 of the
+            // title's `CS_RaytracingResolve` programs on RDNA4). Ported from
+            // crossducking/RAZDA4A-XEN 453597e (GPL-3.0-or-later); the
+            // address is the one gleaf-6/VIctory-7900XTX- names for it.
+            Op::Call(f, _) if self.funcs[*f as usize].name == "dx.op.getDimensions" => return None,
             Op::Call(f, args) => Key::Call(*f, args.clone()),
             Op::Gep(ty, p, idx) => Key::Gep(*ty, *p, idx.clone()),
             Op::Load(p) => Key::Load(*p),

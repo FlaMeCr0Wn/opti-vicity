@@ -180,6 +180,34 @@ pub fn stamp_file(cache: &Path) -> PathBuf {
     cache.join("opti-prepared.txt")
 }
 
+/// The programs a driver ended the game making (one 16-digit hash a line):
+/// the engine leaves them out (`VICTORY_LEAVE_OUT`). Deleting the file
+/// brings them back.
+pub fn left_out_file(cache: &Path) -> PathBuf {
+    cache.join("leave-out.txt")
+}
+
+fn left_out(cache: &Path) -> Vec<String> {
+    std::fs::read_to_string(left_out_file(cache))
+        .unwrap_or_default()
+        .lines()
+        .map(|l| l.trim().to_ascii_lowercase())
+        .filter(|h| h.len() == 16 && h.bytes().all(|b| b.is_ascii_hexdigit()))
+        .collect()
+}
+
+/// Adds `hashes` to [`left_out_file`]; the ones that were not there yet.
+pub fn remember_left_out(cache: &Path, hashes: &[String]) -> Vec<String> {
+    let mut all = left_out(cache);
+    let new: Vec<String> = hashes.iter().filter(|h| !all.contains(h)).cloned().collect();
+    if !new.is_empty() {
+        all.extend(new.iter().cloned());
+        let _ = std::fs::create_dir_all(cache);
+        let _ = std::fs::write(left_out_file(cache), all.join("\n") + "\n");
+    }
+    new
+}
+
 pub fn prepared(engine: &Path, cache: &Path) -> bool {
     std::fs::read_to_string(stamp_file(cache)).is_ok_and(|s| s.trim() == engine_stamp(engine))
 }
@@ -280,6 +308,10 @@ pub fn environment(cfg: &Config, game: &Path, cache: &Path) -> Vec<(String, Stri
     // and restart" ends the game with code 82 for the launcher to start it again.
     set.push(("VICTORY_MENU_FILE".into(), config_file().display().to_string()));
     set.push(("VICTORY_MENU_RESTART".into(), "1".into()));
+    let left_out = left_out(cache);
+    if !left_out.is_empty() {
+        set.push(("VICTORY_LEAVE_OUT".into(), left_out.join(",")));
+    }
     if cfg.diagnostic {
         // The detailed log, a line for every long frame with what it was
         // made of, and where the threads wait when no frame comes for 5 s.
