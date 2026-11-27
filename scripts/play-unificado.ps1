@@ -6,7 +6,8 @@
 #   -SeriesX      the bigger console (sharper, larger texture budget, slower)
 #   -MipDrop 1    drop the top texture level (for 8 GB cards; 0 = full textures, the default)
 #   -NoOverlay    no overlay (same as VICTORY_OVERLAY=0)
-#   -Prepare      only translate the shaders and compile the pipelines ahead, then quit
+#   -MouseSpeed   mouse look speed (VICTORY_MOUSE; default 1, 0 = mouse off)
+#   -Prepare     only translate the shaders and compile the pipelines ahead, then quit
 #   -CacheDir     where shaders/pipelines are kept (default %LOCALAPPDATA%\victory\cache-unificado)
 #   -More         other settings, last word: -More @{ VICTORY_LOG = 'info' }
 #
@@ -15,11 +16,16 @@
 # (`victory shaders` + `victory warm --used`). Draws also wait up to 2 s for a pipeline still compiling instead of
 # being skipped (the play-3070 value of 20 ms gave black screens, broken text and headless people on first visits).
 # So the very first session is slower while it fills the cache; later ones are not.
+#
+# Mouse and keyboard: click on the picture (or F9) to look around with the mouse; F9 or Alt+Tab lets the pointer go.
+# WASD move, left/right mouse button = right/left trigger, Space or Enter = A, Backspace = B, Q/E bumpers,
+# Shift/Ctrl stick clicks, Esc menu, Tab view, arrows D-pad (the README has the whole table).
 param(
     [string]$Game,
     [switch]$SeriesX,
     [ValidateRange(0, 3)][int]$MipDrop = 0,
     [switch]$NoOverlay,
+    [ValidateRange(0.0, 10.0)][double]$MouseSpeed = 1.0,
     [switch]$Prepare,
     [string]$CacheDir = (Join-Path $env:LOCALAPPDATA 'victory\cache-unificado'),
     [hashtable]$More = @{}
@@ -85,6 +91,7 @@ $set = [ordered]@{
     VICTORY_PIPELINE_WAIT_MS     = '2000'
 }
 if ($NoOverlay) { $set.VICTORY_OVERLAY = '0' }
+$set.VICTORY_MOUSE = $MouseSpeed.ToString([System.Globalization.CultureInfo]::InvariantCulture)
 foreach ($k in $More.Keys) { $set[$k] = "$($More[$k])" }
 foreach ($k in $set.Keys) { Set-Item "Env:$k" $set[$k] }
 

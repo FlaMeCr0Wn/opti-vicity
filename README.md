@@ -1,14 +1,15 @@
-# VIctory Unificado (Yaekai 3070 + performance overlay)
+# VIctory Unificado (Yaekai 3070 + overlay + mouse and keyboard)
 
 A fork of [Yaekai/victory-scarlett-3070](https://github.com/Yaekai/victory-scarlett-3070) (master as of
 2026-11-26), which is [Op-lite/victory-scarlett](https://github.com/Op-lite/victory-scarlett) plus 8 GB NVIDIA work. On
 top of it, this fork adds:
 
 - **a performance overlay**, ported from Dolberth's Neptune;
+- **mouse look and mouse buttons**, ported from zm0kie's Neptune_VI, on top of the keyboard's stand-in controller;
 - **a launcher tuned for 12 GB+ NVIDIA cards** that also fixes the black or half-loaded first runs.
 
 The goal was to combine the best parts of the forks tested on one PC: Yaekai/scarlett's texture loading and picture,
-and Neptune's overlay. Their READMEs follow below, unchanged.
+Neptune's overlay, and Neptune_VI's mouse controls. Their READMEs follow below, unchanged.
 
 **This repository contains no game files, code, or assets.** You need your own dump of the title, meaning the folder
 with `game_scarlett_master.exe`. This fork is not affiliated with or endorsed by the title's developer or publisher. It
@@ -23,6 +24,10 @@ is licensed GPL-3.0-or-later, like everything it is built on.
 >   para `Play-Unificado.cmd`; depois disso, basta dar dois cliques.
 > - **Primeira execução:** a primeira sessão é mais lenta enquanto o cache se forma. As seguintes carregam direto.
 > - **Placas de 8 GB:** use `-MipDrop 1`.
+> - **Mouse e teclado:** clique na imagem (ou F9) para olhar com o mouse; F9 ou Alt+Tab solta o ponteiro. WASD anda,
+>   botão esquerdo/direito = gatilho direito/esquerdo (atirar/mirar), Espaço ou Enter = A, Backspace = B, X/Y = X/Y,
+>   Q/E = LB/RB, Shift/Ctrl = clique dos analógicos, Esc = menu, Tab = view, setas = direcional. Sensibilidade:
+>   `-MouseSpeed 1.5` (padrão 1; 0 desliga o mouse).
 
 ## What's added on top of `Yaekai/victory-scarlett-3070`
 
@@ -57,6 +62,43 @@ Where it comes from:
   `presenter()`.
 - `crates/victory-gpu/build.rs` stamps the commit into the build (`VICTORY_BUILD`; "unknown" when built outside a git checkout).
 
+### Mouse and keyboard (`crates/victory-hle/src/modules/gameinput.rs`)
+
+The title only knows controllers, so the keyboard and mouse drive a stand-in controller. With `VICTORY_ONE_PAD` (on
+by default) that stand-in is merged with any real controller, so both work at once.
+
+| Key / mouse | Controller |
+|---|---|
+| **Click on the picture**, or **F9** | take the mouse for looking around (the pointer is hidden) |
+| **F9**, or Alt+Tab | let the pointer go |
+| Mouse movement | right stick |
+| Left / right mouse button | right / left trigger |
+| W A S D | left stick |
+| I J K L | right stick (keys) |
+| Space or Enter | A |
+| Backspace | B |
+| X / Y | X / Y |
+| Q / E | left / right bumper |
+| Shift / Ctrl (or F / H) | left / right stick click |
+| Z / C | left / right trigger (keys) |
+| Esc / Tab | Menu / View |
+| Arrows | D-pad |
+
+Notes:
+
+- The mouse is a stick, not a direct camera: moving it about 1,000 pixels a second (8 per 8 ms reading) pushes the stick to
+  its end, and the movement is smoothed over a few readings.
+- **`VICTORY_MOUSE`** (or `-MouseSpeed`) scales it: the default is 1, and 0 leaves the mouse alone.
+- The click that takes the mouse does not fire the trigger.
+- The pointer is let go when the game loses focus, and is not taken again until the next click on the picture.
+
+Where it comes from:
+
+- It is ported from [zm0kiemedia/Neptune_VI](https://github.com/zm0kiemedia/Neptune_VI) (`host::mouse` and the
+  stand-in pad's mouse inputs, Space as A, Shift/Ctrl as stick clicks).
+- Enter stays A as well, and scripted and automatic presses (`VICTORY_KEYS`, `VICTORY_AUTO_A`) still use Enter.
+- `VICTORY_MOUSE=0` was added to turn the mouse off.
+
 ### `Play-Unificado.cmd` / `scripts/play-unificado.ps1`
 
 It uses Yaekai's `scripts/play-3070.ps1` settings (Series S), with these changes:
@@ -78,6 +120,7 @@ How the first runs go:
 
 Options:
 
+- `-MouseSpeed 1.5` changes the mouse look speed (`VICTORY_MOUSE`; default 1, 0 turns the mouse off).
 - `-SeriesX` uses the bigger console: sharper and with a larger texture budget, but slower.
 - `-Prepare` only translates the shaders and compiles the pipelines ahead, then quits.
 - `-More @{ VICTORY_X = 'y' }` sets anything else.
