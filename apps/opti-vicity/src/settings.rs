@@ -40,7 +40,7 @@ pub struct Config {
     /// "dlss" (NVIDIA DLSS, RTX cards, with NVIDIA's files the launcher fetches).
     pub upscaler: String,
     /// The scene's size against the picture's: quality, balanced, performance,
-    /// ultraperformance or native.
+    /// ultraperformance (native stops the title).
     pub render_scale: String,
     /// Frame generation: "0" (off), "amd" (AMD FSR 3, 2x) or "2" to "6" (DLSS, RTX 40 and later).
     pub framegen: String,
@@ -362,7 +362,8 @@ fn upscaling(cfg: &Config) -> Vec<(String, String)> {
     let mut set: Vec<(String, String)> = Vec::new();
     let mut put = |k: &str, v: String| set.push((k.to_owned(), v));
     let scale = match cfg.render_scale.as_str() {
-        s @ ("quality" | "balanced" | "performance" | "ultraperformance" | "native") => s,
+        s @ ("quality" | "balanced" | "performance" | "ultraperformance") => s,
+        // Native (and DLAA) stops the title: see `render_scale::Mode::Native`.
         _ => "quality",
     };
     let dlss_fg = framegen != "0" && framegen != "amd";
@@ -377,7 +378,7 @@ fn upscaling(cfg: &Config) -> Vec<(String, String)> {
         }
         "dlss" => {
             put("VICTORY_DLSS", "1".into());
-            put("VICTORY_DLSS_MODE", if scale == "native" { "dlaa" } else { scale }.into());
+            put("VICTORY_DLSS_MODE", scale.into());
             // Where DLSS does not start after all (no RTX card): AMD's, at the same scale.
             if let Some(dir) = fidelityfx_dir() {
                 put("VICTORY_FIDELITYFX_DIR", dir.display().to_string());

@@ -114,6 +114,15 @@ pub fn run(
             format!("VICTORY_RENDER_SCALE={name}: native, quality, balanced, performance or ultraperformance")
         })?),
     };
+    // A full-size scene stops the title (`render_scale::Mode::Native`).
+    let scale = scale.map(|mode| {
+        if mode == crate::render_scale::Mode::Native {
+            println!("render scale   native left out: the title stops allocating its full-size targets; quality instead");
+            crate::render_scale::Mode::Quality
+        } else {
+            mode
+        }
+    });
     let images = match scale {
         Some(mode) if mode != crate::render_scale::Mode::Quality && !pc_upscaler && !available.dlss => {
             println!(

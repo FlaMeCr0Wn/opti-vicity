@@ -86,7 +86,6 @@ fn items() -> Vec<Item> {
                 ("balanced", t("EQUILIBRADO (59%)", "BALANCED (59%)")),
                 ("performance", t("DESEMPENHO (50%)", "PERFORMANCE (50%)")),
                 ("ultraperformance", t("ULTRA DESEMPENHO (33%)", "ULTRA PERFORMANCE (33%)")),
-                ("native", t("NATIVA (100%)", "NATIVE (100%)")),
             ]),
         },
         Item { key: "series_x", label: t("Console", "Console"), values: owned(&[("0", "SERIES S"), ("1", "SERIES X")]) },
@@ -126,7 +125,7 @@ fn started_value(key: &str) -> String {
         }
         "render_scale" => var("VICTORY_RENDER_SCALE")
             .or_else(|| var("VICTORY_DLSS_MODE").filter(|_| var("VICTORY_DLSS").as_deref() == Some("1")))
-            .map(|s| if s == "dlaa" { "native".into() } else { s })
+            .filter(|s| !matches!(s.as_str(), "native" | "nativeaa" | "dlaa"))
             .unwrap_or_else(|| "quality".into()),
         "series_x" => if crate::console::current() == crate::console::Console::SeriesX { "1" } else { "0" }.into(),
         "overlay" => if var("VICTORY_OVERLAY").as_deref() == Some("0") { "0" } else { "1" }.into(),

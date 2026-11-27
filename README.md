@@ -68,7 +68,7 @@ slower while it writes down the pipelines the game uses. On the next start, the 
 | **Graphics card** | "12 GB or more" (full textures) or "8 GB" (the top texture level dropped). |
 | **Mouse** | Mouse look speed, or off. |
 | **Upscaler** | The game's own (its console FSR, which takes the Quality size only), AMD FSR 3.1 for PC (any card; shipped in `fidelityfx`) or NVIDIA DLSS (RTX cards, with NVIDIA's files). |
-| **Resolution** | The scene's size against the picture's: Quality 67%, Balanced 59%, Performance 50%, Ultra performance 33% or Native. On this title the frame is mostly CPU work, so a smaller scene helps less than on most games. |
+| **Resolution** | The scene's size against the picture's: Quality 67%, Balanced 59%, Performance 50%, Ultra performance 33% (Native is not offered: at full size the game stops while making its first scene target). On this title the frame is mostly CPU work, so a smaller scene helps less than on most games. |
 | **Frame gen** | Off, AMD FSR 3 (2x; picks AMD FSR 3.1 as the upscaler) or DLSS 2x to 6x (RTX 40/50; 3x and more need an RTX 50). |
 | **Get the DLSS files** | Downloads NVIDIA's Streamline SDK (~263 MB, once) from NVIDIA's GitHub with Windows' `curl.exe` and keeps its DLSS and DLSS frame generation files in `nvidia-sdk` (`tar.exe` unpacks them). No script is involved: a download script in the package made Defender call the zip a trojan. They are under NVIDIA's licences and do not come with opti-vicity. |
 | **Prepare shaders** | Translates the shaders and compiles the pipelines ahead without starting the game. |

@@ -117,12 +117,11 @@ mod ui {
         ("dlss", "NVIDIA DLSS (RTX)", "NVIDIA DLSS (RTX)"),
     ];
     /// The render scales.
-    const SCALES: [(&str, &str, &str); 5] = [
+    const SCALES: [(&str, &str, &str); 4] = [
         ("quality", "Qualidade (67%)", "Quality (67%)"),
         ("balanced", "Equilibrado (59%)", "Balanced (59%)"),
         ("performance", "Desempenho (50%)", "Performance (50%)"),
         ("ultraperformance", "Ultra desempenho (33%)", "Ultra performance (33%)"),
-        ("native", "Nativa (100%)", "Native (100%)"),
     ];
     /// Frame generation.
     const FRAMEGENS: [(&str, &str, &str); 7] = [

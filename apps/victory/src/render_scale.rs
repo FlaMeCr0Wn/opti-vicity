@@ -21,6 +21,10 @@ const RETAIL_BUILD: &str = "b99f876b74d4a77f03af5f878223b27bd647b5c35a79d5decd9f
 /// The render size over the output size, by FidelityFX's names.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Mode {
+    /// The title stops at a breakpoint (an allocation failure) when it makes
+    /// its first full-size scene target through this path: 1920x1080
+    /// (0x882000 bytes) on Series S, 3840x2160 on Series X, with AMD's
+    /// upscaler, frame generation or not (2026-11-27). `run` uses Quality.
     Native,
     Quality,
     Balanced,
