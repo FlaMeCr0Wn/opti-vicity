@@ -84,3 +84,4 @@ game-folder.txt
 
 # Local builds of the shareable exe (paths remapped)
 /target-share/
+/target-diag/
