@@ -1,5 +1,13 @@
 # opti-vicity
 
+> ### ▶ To play: [download the latest release](https://github.com/FlaMeCr0Wn/opti-vicity/releases/latest), extract it and open `opti-vicity.exe`
+>
+> **Para jogar:** [baixe a release mais recente](https://github.com/FlaMeCr0Wn/opti-vicity/releases/latest), extraia e
+> abra o `opti-vicity.exe`. É o único arquivo que você precisa abrir (deixe a pasta `bin` ao lado dele).
+>
+> The code on this page is the source. You do not need it to play. It is only for building opti-vicity yourself
+> (see [Build from source](#build-from-source)).
+
 Runs your own Xbox Series dump of the title on a Windows PC, with:
 
 - a **one-window launcher** (drag the game folder in, press Play);
