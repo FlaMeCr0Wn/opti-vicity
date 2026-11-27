@@ -206,6 +206,9 @@ pub(crate) extern "system" fn wait(
         // Tokens count frames (consecutive), not ticks.
         let frame = FRAME.fetch_add(1, Ordering::Relaxed) + 1;
         pace::begun();
+        // Every frame's length, and what the long ones were made of
+        // (`VICTORY_FRAME_LOG=1`; nothing when off).
+        crate::framelog::frame();
         if !token.is_null() {
             // SAFETY: checked non-null; the title passes its token.
             unsafe { token.write(frame) };

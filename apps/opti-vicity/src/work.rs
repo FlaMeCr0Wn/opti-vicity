@@ -26,7 +26,8 @@ pub enum Event {
         recorded_none: bool,
     },
     Started,
-    Exited(Option<i32>),
+    /// The game closed (its exit code), and the diagnostic session folder if one was kept.
+    Exited(Option<i32>, Option<PathBuf>),
     Failed(String),
 }
 
@@ -154,7 +155,28 @@ fn progress(line: &str) -> Option<(u64, u64)> {
 }
 
 fn run(plan: &Plan, post: &impl Fn(Event)) {
-    let log_path = settings::logs_dir().join("game.log");
+    // Diagnostic mode: everything of this session in a folder of its own.
+    let session = if plan.cfg.diagnostic {
+        match crate::diag::new_session() {
+            Ok(dir) => {
+                crate::diag::write_settings(
+                    &dir,
+                    &settings::environment(&plan.cfg, &plan.game, &plan.cache),
+                );
+                Some(dir)
+            }
+            Err(e) => {
+                post(Event::Failed(format!("diag: {e}")));
+                return;
+            }
+        }
+    } else {
+        None
+    };
+    let log_path = session.as_ref().map_or_else(
+        || settings::logs_dir().join("game.log"),
+        |d| d.join("game.log"),
+    );
     let mut cmd = engine(plan);
     cmd.arg("run")
         .arg(plan.game.join(settings::TITLE_EXE))
@@ -184,8 +206,17 @@ fn run(plan: &Plan, post: &impl Fn(Event)) {
         }
     };
     post(Event::Started);
+    let sampler = session.clone().map(|dir| {
+        let pid = child.id();
+        std::thread::spawn(move || crate::diag::sample(&dir, pid))
+    });
     let code = child.wait().ok().and_then(|s| s.code());
-    post(Event::Exited(code));
+    if let (Some(dir), Some(sampler)) = (&session, sampler)
+        && let Ok(seen) = sampler.join()
+    {
+        crate::diag::summarize(dir, &seen);
+    }
+    post(Event::Exited(code, session));
 }
 
 /// Where a game log is, for the window's Logs button.

@@ -32,6 +32,10 @@ pub struct Config {
     pub small_card: bool,
     /// Mouse look speed (`VICTORY_MOUSE`; 0 = the mouse is left alone).
     pub mouse: f32,
+    /// Diagnostic mode: the detailed log, every long frame, and a sample a
+    /// second of memory and disk, with F8 marking the hitches felt
+    /// (`logs\diag\<date_time>\`).
+    pub diagnostic: bool,
 }
 
 impl Default for Config {
@@ -42,6 +46,7 @@ impl Default for Config {
             overlay: true,
             small_card: false,
             mouse: 1.0,
+            diagnostic: false,
         }
     }
 }
@@ -64,6 +69,7 @@ impl Config {
                 "overlay" => cfg.overlay = on,
                 "small_card" => cfg.small_card = on,
                 "mouse" => cfg.mouse = value.parse().unwrap_or(1.0),
+                "diagnostic" => cfg.diagnostic = on,
                 _ => {}
             }
         }
@@ -77,11 +83,12 @@ impl Config {
             .map(|g| g.display().to_string())
             .unwrap_or_default();
         let text = format!(
-            "game={game}\nseries_x={}\noverlay={}\nsmall_card={}\nmouse={}\n",
+            "game={game}\nseries_x={}\noverlay={}\nsmall_card={}\nmouse={}\ndiagnostic={}\n",
             u8::from(self.series_x),
             u8::from(self.overlay),
             u8::from(self.small_card),
-            self.mouse
+            self.mouse,
+            u8::from(self.diagnostic)
         );
         let _ = std::fs::create_dir_all(local_dir());
         let _ = std::fs::write(config_file(), text);
@@ -246,6 +253,18 @@ pub fn environment(cfg: &Config, game: &Path, cache: &Path) -> Vec<(String, Stri
     set.push(("VICTORY_MOUSE".into(), format!("{}", cfg.mouse)));
     if !cfg.overlay {
         set.push(("VICTORY_OVERLAY".into(), "0".into()));
+    }
+    if cfg.diagnostic {
+        // The detailed log, a line for every long frame with what it was
+        // made of, and where the threads wait when no frame comes for 5 s.
+        for (key, value) in [
+            ("VICTORY_LOG", "info"),
+            ("VICTORY_FRAME_LOG", "1"),
+            ("VICTORY_HANG_WATCH_S", "5"),
+        ] {
+            set.retain(|(k, _)| k != key);
+            set.push((key.into(), value.into()));
+        }
     }
     set
 }

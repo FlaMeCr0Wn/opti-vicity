@@ -11,6 +11,8 @@ fn main() {
 }
 
 #[cfg(windows)]
+mod diag;
+#[cfg(windows)]
 mod settings;
 #[cfg(windows)]
 mod work;
@@ -99,6 +101,7 @@ mod ui {
     const ID_OVERLAY: usize = 104;
     const ID_CARD: usize = 105;
     const ID_MOUSE: usize = 106;
+    const ID_DIAG: usize = 107;
     const ID_PLAY: usize = 109;
     const ID_PREPARE: usize = 110;
     const ID_LOGS: usize = 111;
@@ -116,6 +119,7 @@ mod ui {
         overlay: isize,
         card: isize,
         mouse: isize,
+        diag: isize,
         progress: isize,
         status: isize,
         play: isize,
@@ -332,7 +336,7 @@ mod ui {
     }
 
     const WIDTH: i32 = 600;
-    const HEIGHT: i32 = 372;
+    const HEIGHT: i32 = 404;
     const HEADER_H: i32 = 76;
     const PAD: i32 = 24;
 
@@ -515,7 +519,23 @@ mod ui {
             ID_MOUSE,
             ui,
         );
-        y += 48;
+        y += 38;
+        let diag = make(
+            0,
+            "BUTTON",
+            t(
+                "Modo diagnóstico (aperte F8 a cada travada; salva tudo para análise)",
+                "Diagnostic mode (press F8 at each hitch; keeps everything for analysis)",
+            ),
+            BS_AUTOCHECKBOX | WS_TABSTOP,
+            PAD,
+            y,
+            inner,
+            22,
+            ID_DIAG,
+            ui,
+        );
+        y += 42;
         let progress = make(0, "msctls_progress32", "", 0, PAD, y, inner, 12, 0, ui);
         y += 18;
         let status = make(
@@ -606,6 +626,7 @@ mod ui {
             overlay,
             card,
             mouse,
+            diag,
             progress,
             status,
             play,
@@ -625,12 +646,22 @@ mod ui {
             show,
             t("Mostrar o jogo no Explorer", "Show the game in Explorer"),
         );
+        tooltip(
+            window,
+            instance,
+            diag,
+            t(
+                "Log detalhado, cada frame longo, e memória/disco a cada segundo, em Logs\\diag. Um bipe confirma cada F8.",
+                "Detailed log, every long frame, and memory/disk each second, in Logs\\diag. A beep confirms each F8.",
+            ),
+        );
         // The saved choices.
         let cfg = state(|st| st.cfg.clone());
         // SAFETY: live controls.
         unsafe {
             SendMessageW(h(series_x), BM_SETCHECK, usize::from(cfg.series_x), 0);
             SendMessageW(h(overlay), BM_SETCHECK, usize::from(cfg.overlay), 0);
+            SendMessageW(h(diag), BM_SETCHECK, usize::from(cfg.diagnostic), 0);
             SendMessageW(h(card), CB_SETCURSEL, usize::from(cfg.small_card), 0);
             let pick = MOUSE_SPEEDS
                 .iter()
@@ -721,7 +752,7 @@ mod ui {
         enable(c.prepare, ready);
         enable(c.browse, busy == Busy::Idle);
         enable(c.show, game.is_some());
-        for control in [c.series_x, c.overlay, c.card, c.mouse] {
+        for control in [c.series_x, c.overlay, c.card, c.mouse, c.diag] {
             enable(control, busy == Busy::Idle);
         }
     }
@@ -755,10 +786,12 @@ mod ui {
                 SendMessageW(h(c.mouse), CB_GETCURSEL, 0, 0),
             )
         };
-        let (series_x, overlay) = (checked(c.series_x), checked(c.overlay));
+        let (series_x, overlay, diagnostic) =
+            (checked(c.series_x), checked(c.overlay), checked(c.diag));
         state(|st| {
             st.cfg.series_x = series_x;
             st.cfg.overlay = overlay;
+            st.cfg.diagnostic = diagnostic;
             st.cfg.small_card = card == 1;
             st.cfg.mouse = MOUSE_SPEEDS.get(mouse as usize).copied().unwrap_or(1.0);
             st.cfg.save();
@@ -877,10 +910,24 @@ mod ui {
                 // SAFETY: our window.
                 unsafe { ShowWindow(h(c.window), SW_MINIMIZE) };
             }
-            Event::Exited(code) => {
+            Event::Exited(code, session) => {
                 state(|st| st.busy = Busy::Idle);
                 refresh();
+                if let Some(dir) = &session {
+                    // The session's folder, with the summary picked.
+                    open(
+                        "explorer.exe",
+                        &format!("/select,\"{}\"", dir.join("summary.txt").display()),
+                    );
+                }
                 match code {
+                    Some(0) if session.is_some() => status(
+                        t(
+                            "O jogo fechou. Diagnóstico salvo (pasta aberta no Explorer).",
+                            "The game closed. Diagnostic saved (folder opened in Explorer).",
+                        ),
+                        GREEN,
+                    ),
                     Some(0) => status(t("O jogo fechou", "The game closed"), GRAY),
                     other => status(
                         &format!(
@@ -1099,7 +1146,7 @@ mod ui {
                         let _ = std::fs::create_dir_all(&logs);
                         open("explorer.exe", &format!("\"{}\"", logs.display()));
                     }
-                    ID_SERIES_X | ID_OVERLAY if code == BN_CLICKED => read_options(),
+                    ID_SERIES_X | ID_OVERLAY | ID_DIAG if code == BN_CLICKED => read_options(),
                     ID_CARD | ID_MOUSE if code == CBN_SELCHANGE => read_options(),
                     _ => {}
                 }
