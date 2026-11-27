@@ -89,7 +89,29 @@ fn family(shaders: &[Arc<Shader>]) -> Option<usize> {
     FAMILIES.iter().position(|name| named(shaders, name.as_bytes()))
 }
 
-fn left_out(family: Option<usize>) -> Option<&'static str> {
+/// The light in the water's volume, in tiles (`water_shading:CS_TransmissionVolumetrics_Tiled`
+/// and `_Tiled_LocalLights`): programs of one 64-lane wave a group, which a host of 32-lane
+/// waves (NVIDIA) gets in the wave-wide form only. In that form they leave whole tiles of open
+/// water dark, around boats, along shores and under bridges, and take about 15 ms of the card a
+/// frame. Left out there, the water has no light of its own depth (darker, bluer) and no
+/// blocks; `VICTORY_WATER_LIGHT=1` runs them as before. Ported from trustno1-coder/VIctory-NVIDIA
+/// 35c1560 (GPL-3.0-or-later), which measured 25 fps with them and 30 without on its first boat
+/// ride (RTX 5070); fxceless/victory-fork names the same two programs.
+const WATER_LIGHT: [&str; 2] = ["5dc3b25986622949", "6f225b641c5b0708"];
+
+fn water_light_left_out(shaders: &[Arc<Shader>]) -> bool {
+    static ASKED: OnceLock<bool> = OnceLock::new();
+    !*ASKED.get_or_init(|| std::env::var_os("VICTORY_WATER_LIGHT").is_some_and(|v| v == "1"))
+        && victory_shader::emit::host_settings()[0] == 32
+        && shaders.iter().any(|s| WATER_LIGHT.contains(&s.hash.as_str()))
+}
+
+fn left_out(family: Option<usize>, shaders: &[Arc<Shader>]) -> Option<&'static str> {
+    if water_light_left_out(shaders) {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| tracing::warn!("the water's tiled light left out on this card (dark blocks; VICTORY_WATER_LIGHT=1 runs it)"));
+        return Some("the water's tiled light on a host of 32-lane waves (dark blocks; VICTORY_WATER_LIGHT=1 runs it), left out");
+    }
     static SKIP_RT_RESOLVE: OnceLock<bool> = OnceLock::new();
     let skip_rt = *SKIP_RT_RESOLVE.get_or_init(|| {
         let builder = std::env::var_os("VICTORY_BVH_BUILDER").is_some_and(|v| v == "1");
@@ -161,7 +183,7 @@ impl Pending {
             && shaders.iter().all(|s| s.stage != "mesh"))
             || scene_input;
         let family = family(&shaders);
-        let left_out = left_out(family);
+        let left_out = left_out(family, &shaders);
         Pending {
             family,
             queued_at: OnceLock::new(),
