@@ -33,7 +33,7 @@ publisher. It is licensed GPL-3.0-or-later, like everything it is built on.
 > - **Upscaler e geração de quadros (FG):** no launcher escolha o upscaler (do jogo, AMD FSR 3.1 ou NVIDIA DLSS), a resolução
 >   interna e o FG (AMD FSR 3 2x em qualquer placa; DLSS 2x a 6x nas RTX 40/50). No jogo, **F1** abre as opções: o FG liga e
 >   desliga na hora; o resto vale ao reiniciar ("Salvar e reiniciar agora" reabre o jogo sozinho). O DLSS precisa dos arquivos
->   da NVIDIA: botão "Baixar arquivos do DLSS" no launcher (ou `Get-NVIDIA-DLSS.cmd`).
+>   da NVIDIA: botão "Baixar arquivos do DLSS" no launcher (baixa ~263 MB do GitHub da NVIDIA uma vez).
 > - **Mouse:** clique na imagem (ou F9) para olhar com o mouse; F9 ou Alt+Tab solta. WASD anda, botão esquerdo/direito =
 >   atirar/mirar, Espaço ou Enter = A.
 > - **Placa de 8 GB:** escolha "8 GB" no launcher.
@@ -70,7 +70,7 @@ slower while it writes down the pipelines the game uses. On the next start, the 
 | **Upscaler** | The game's own (its console FSR, which takes the Quality size only), AMD FSR 3.1 for PC (any card; shipped in `fidelityfx`) or NVIDIA DLSS (RTX cards, with NVIDIA's files). |
 | **Resolution** | The scene's size against the picture's: Quality 67%, Balanced 59%, Performance 50%, Ultra performance 33% or Native. On this title the frame is mostly CPU work, so a smaller scene helps less than on most games. |
 | **Frame gen** | Off, AMD FSR 3 (2x; picks AMD FSR 3.1 as the upscaler) or DLSS 2x to 6x (RTX 40/50; 3x and more need an RTX 50). |
-| **Get the DLSS files** | Runs `Get-NVIDIA-DLSS.cmd`, which fetches NVIDIA's Streamline, DLSS and DLSS frame generation files (~70 MB) from NVIDIA's GitHub into `nvidia-sdk`. They are under NVIDIA's licences and do not come with opti-vicity. |
+| **Get the DLSS files** | Downloads NVIDIA's Streamline SDK (~263 MB, once) from NVIDIA's GitHub with Windows' `curl.exe` and keeps its DLSS and DLSS frame generation files in `nvidia-sdk` (`tar.exe` unpacks them). No script is involved: a download script in the package made Defender call the zip a trojan. They are under NVIDIA's licences and do not come with opti-vicity. |
 | **Prepare shaders** | Translates the shaders and compiles the pipelines ahead without starting the game. |
 | **Play** | Prepares first when this build needs it, then starts the game. The launcher minimizes and comes back when the game closes. |
 | **Logs** | Opens the folder with `game.log` and `prepare.log`. Send them along with a bug report. |
@@ -242,7 +242,7 @@ opti-vicity stands on these projects. Their READMEs are kept in
 | [Yaekai/victory-scarlett-3070](https://github.com/Yaekai/victory-scarlett-3070) | The base of opti-vicity: NVIDIA heap fixes, visual fixes, the 60 fps unlock and the `play-3070` settings. |
 | [Dolberthi/neptune-dolberth-nvidia-8gb](https://github.com/Dolberthi/neptune-dolberth-nvidia-8gb) | The performance overlay. The overlay itself is by zm0kie. |
 | [zm0kiemedia/Neptune_VI](https://github.com/zm0kiemedia/Neptune_VI) | Mouse look and mouse buttons on the stand-in controller. |
-| [trustno1-coder/VIctory-NVIDIA](https://github.com/trustno1-coder/VIctory-NVIDIA) | DLSS and DLSS frame generation through NVIDIA Streamline, the render-scale patch, the F1 settings menu it inspired, and `Get-NVIDIA-DLSS.cmd`. |
+| [trustno1-coder/VIctory-NVIDIA](https://github.com/trustno1-coder/VIctory-NVIDIA) | DLSS and DLSS frame generation through NVIDIA Streamline, the render-scale patch, the F1 settings menu it inspired, and the way of fetching NVIDIA's files. |
 | [gleaf-6/VIctory-7900XTX-](https://github.com/gleaf-6/VIctory-7900XTX-) | AMD FSR 3 frame generation on the host. |
 
 The git history keeps the line: `ee36438` imports Yaekai's master as it was on 2026-11-26, and the commits after it are

@@ -781,7 +781,7 @@ mod ui {
                 t("Baixar arquivos do DLSS (NVIDIA)", "Get the DLSS files (NVIDIA)")
             },
         );
-        enable(c.nvidia, !nvidia && settings::nvidia_script().is_some());
+        enable(c.nvidia, !nvidia);
     }
 
     fn tooltip(window: isize, instance: *mut c_void, tool: isize, text: &str) {
@@ -1090,6 +1090,27 @@ mod ui {
                 refresh();
                 status(&format!("{}: {why}", t("Falhou", "Failed")), RED);
             }
+            Event::NvidiaFetched(result) => {
+                state(|st| {
+                    st.busy = Busy::Idle;
+                    st.phase.clear();
+                });
+                set_marquee(c.progress, false);
+                // SAFETY: a live progress bar.
+                unsafe { SendMessageW(h(c.progress), PBM_SETPOS, 0, 0) };
+                show_options();
+                refresh();
+                match result {
+                    Ok(()) => status(
+                        t(
+                            "Arquivos do DLSS instalados. Escolha DLSS no Upscaler e clique em Jogar.",
+                            "DLSS files installed. Pick DLSS as the upscaler and press Play.",
+                        ),
+                        GREEN,
+                    ),
+                    Err(why) => status(&format!("{}: {why}", t("Não consegui baixar o DLSS", "Could not get DLSS")), RED),
+                }
+            }
             Event::Blocked => {
                 status(
                     t(
@@ -1331,16 +1352,21 @@ mod ui {
                     ID_SERIES_X | ID_OVERLAY | ID_DIAG if code == BN_CLICKED => read_options(),
                     ID_CARD | ID_MOUSE | ID_UPSCALER | ID_SCALE | ID_FRAMEGEN if code == CBN_SELCHANGE => read_options(),
                     ID_NVIDIA if code == BN_CLICKED => {
-                        // The person's own download, in a console of its own, from NVIDIA.
-                        if let Some(script) = settings::nvidia_script() {
-                            open("cmd.exe", &format!("/c \"\"{}\"\"", script.display()));
-                            status(
-                                t(
-                                    "Baixando os arquivos do DLSS na outra janela; depois abra o launcher de novo.",
-                                    "Getting the DLSS files in the other window; then open the launcher again.",
-                                ),
-                                GRAY,
-                            );
+                        // The person's own download, from NVIDIA's GitHub.
+                        if state(|st| st.busy) == Busy::Idle {
+                            state(|st| st.busy = Busy::Preparing);
+                            refresh();
+                            enable(ctl().nvidia, false);
+                            let window = ctl().window;
+                            work::get_nvidia(move |event| {
+                                let boxed = Box::into_raw(Box::new(event));
+                                // SAFETY: our window; on failure the event is taken back.
+                                unsafe {
+                                    if PostMessageW(h(window), WM_APP, 0, boxed as isize) == 0 {
+                                        drop(Box::from_raw(boxed));
+                                    }
+                                }
+                            });
                         }
                     }
                     _ => {}

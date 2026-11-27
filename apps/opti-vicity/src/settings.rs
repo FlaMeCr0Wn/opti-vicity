@@ -37,7 +37,7 @@ pub struct Config {
     /// (`logs\diag\<date_time>\`).
     pub diagnostic: bool,
     /// Who upscales: "game" (the console FSR, 1280x720 in only), "fsr" (AMD FSR 3.1 for PC) or
-    /// "dlss" (NVIDIA DLSS, RTX cards, with the files Get-NVIDIA-DLSS.cmd fetches).
+    /// "dlss" (NVIDIA DLSS, RTX cards, with NVIDIA's files the launcher fetches).
     pub upscaler: String,
     /// The scene's size against the picture's: quality, balanced, performance,
     /// ultraperformance or native.
@@ -315,7 +315,7 @@ pub fn fidelityfx_dir() -> Option<PathBuf> {
 }
 
 /// NVIDIA's Streamline with DLSS (`nvidia-sdk\Streamline\bin\x64`, fetched by
-/// `Get-NVIDIA-DLSS.cmd`: NVIDIA's licence, never shipped).
+/// the launcher's button, `work::get_nvidia`: NVIDIA's licence, never shipped).
 pub fn streamline_dir() -> Option<PathBuf> {
     near()
         .into_iter()
@@ -394,9 +394,4 @@ fn upscaling(cfg: &Config) -> Vec<(String, String)> {
         put("VICTORY_FRAMEGEN_X", if dlss_fg { framegen.clone() } else { "0".into() });
     }
     set
-}
-
-/// `Get-NVIDIA-DLSS.cmd`, which fetches NVIDIA's files into `nvidia-sdk\` beside it.
-pub fn nvidia_script() -> Option<PathBuf> {
-    near().into_iter().map(|d| d.join("Get-NVIDIA-DLSS.cmd")).find(|p| p.is_file())
 }

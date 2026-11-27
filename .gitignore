@@ -86,5 +86,5 @@ game-folder.txt
 /target-share/
 /target-diag/
 
-# NVIDIA's DLSS files (Get-NVIDIA-DLSS.cmd): NVIDIA's licence, never committed or shipped
+# NVIDIA's DLSS files (the launcher fetches them): NVIDIA's licence, never committed or shipped
 /nvidia-sdk/
