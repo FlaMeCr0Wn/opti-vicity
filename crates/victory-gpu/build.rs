@@ -41,5 +41,15 @@ fn main() {
         hash.update(&bytes);
     }
     println!("cargo:rerun-if-changed=build.rs");
+    // The short commit, for the performance overlay's build label (`src/overlay.rs`).
+    let commit = std::process::Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .current_dir(&root)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
+        .unwrap_or_else(|| "unknown".into());
+    println!("cargo:rustc-env=VICTORY_BUILD={commit}");
     println!("cargo:rustc-env=VICTORY_TRANSLATOR={}", hash.finalize().to_hex());
 }
