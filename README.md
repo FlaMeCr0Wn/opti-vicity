@@ -1,3 +1,152 @@
+# VIctory Unificado (Yaekai 3070 + performance overlay)
+
+A fork of [Yaekai/victory-scarlett-3070](https://github.com/Yaekai/victory-scarlett-3070) (master as of
+2026-11-26), which is [Op-lite/victory-scarlett](https://github.com/Op-lite/victory-scarlett) plus 8 GB NVIDIA work. On
+top of it, this fork adds:
+
+- **a performance overlay**, ported from Dolberth's Neptune;
+- **a launcher tuned for 12 GB+ NVIDIA cards** that also fixes the black or half-loaded first runs.
+
+The goal was to combine the best parts of the forks tested on one PC: Yaekai/scarlett's texture loading and picture,
+and Neptune's overlay. Their READMEs follow below, unchanged.
+
+**This repository contains no game files, code, or assets.** You need your own dump of the title, meaning the folder
+with `game_scarlett_master.exe`. This fork is not affiliated with or endorsed by the title's developer or publisher. It
+is licensed GPL-3.0-or-later, like everything it is built on.
+
+> **PT-BR (resumo):**
+> - **O que é:** o fork do Yaekai (scarlett + ajustes NVIDIA) com o overlay de desempenho do Neptune. O F10
+>   mostra/esconde o overlay e mostra FPS, ms, draws, CPU, GPU, RAM e VRAM.
+> - **O launcher:** `Play-Unificado.cmd` roda em Series S com texturas completas (para placas de 12 GB+) e corrige a
+>   primeira execução preta ou carregando aos poucos.
+> - **Como usar:** compile com `cargo build --release --locked -p victory`. Na primeira vez, arraste a pasta do seu dump
+>   para `Play-Unificado.cmd`; depois disso, basta dar dois cliques.
+> - **Primeira execução:** a primeira sessão é mais lenta enquanto o cache se forma. As seguintes carregam direto.
+> - **Placas de 8 GB:** use `-MipDrop 1`.
+
+## What's added on top of `Yaekai/victory-scarlett-3070`
+
+### Performance overlay (`crates/victory-gpu/src/overlay.rs`, `pixels.rs`)
+
+The panel sits in the top-left corner of the game window. It shows:
+
+- FPS and ms for the frame, plus the 30 s high/low/average;
+- draws per frame;
+- CPU % and GPU % (GPU is system-wide, from Windows performance counters);
+- RAM used/total;
+- VRAM used/budget;
+- the CPU and GPU names, and the build's commit.
+
+How it is drawn:
+
+- It is a separate topmost, click-through, layered Win32 window, drawn with GDI on its own thread and refreshed every
+  500 ms. So it costs the frame nothing and never shows up in the game's own image.
+- It follows the game window and hides when the game is minimized or another window is in front.
+
+Controls:
+
+- **F10** shows/hides it while the game is in front.
+- **`VICTORY_OVERLAY=0`** (or `-NoOverlay`) turns it off.
+
+Where it comes from:
+
+- It is ported from [Dolberthi/neptune-dolberth-nvidia-8gb](https://github.com/Dolberthi/neptune-dolberth-nvidia-8gb).
+  That repo credits the overlay to zm0kie.
+- Its F12 screenshot code was left out.
+- The hooks are two lines in `crates/victory-gpu/src/host.rs`: frame stats from `Meter::frame`, and the start in
+  `presenter()`.
+- `crates/victory-gpu/build.rs` stamps the commit into the build (`VICTORY_BUILD`; "unknown" when built outside a git checkout).
+
+### `Play-Unificado.cmd` / `scripts/play-unificado.ps1`
+
+It uses Yaekai's `scripts/play-3070.ps1` settings (Series S), with these changes:
+
+| Setting | play-3070 | play-unificado | Why |
+|---|---|---|---|
+| `VICTORY_TEXTURE_MIP_DROP` | 1 | **0** (`-MipDrop 1` for 8 GB) | Full textures. The top level only needs to be dropped on 8 GB cards. |
+| `VICTORY_PIPELINE_WAIT_MS` | 20 | **2000** | With 20 ms, a draw whose pipeline is still compiling is skipped. On a first visit that meant black screens, broken text, and people without heads. |
+| `VICTORY_CACHE_DIR` | default | **`%LOCALAPPDATA%\victory\cache-unificado`** | One fixed cache folder for this build. Saves stay in the default place. |
+| Prepare after a new build | `-Prewarm` by hand | **automatic** | Runs `victory shaders <shaders.rpf>`, then `victory warm --used`. The second step compiles ahead every pipeline the game was seen using, as written down by `VICTORY_PIPELINE_BOOK=1`. |
+| `VICTORY_LOG` | info | warn | Less console output. |
+
+How the first runs go:
+
+- **First session:** slower while it fills the cache, and it writes down the pipelines it meets.
+- **Next start:** the launcher compiles all of those pipelines ahead of time. On the test PC that was 2,047 pipelines
+  in 134 s, about 2.5 minutes with the shader pass.
+- **From then on:** the game loads complete from the first frame.
+
+Options:
+
+- `-SeriesX` uses the bigger console: sharper and with a larger texture budget, but slower.
+- `-Prepare` only translates the shaders and compiles the pipelines ahead, then quits.
+- `-More @{ VICTORY_X = 'y' }` sets anything else.
+
+## Build and run
+
+1. Install the tools once: [Rust](https://rustup.rs), plus the Visual Studio 2022 C++ build tools with a Windows SDK.
+2. Build:
+
+   ```powershell
+   cargo build --release --locked -p victory
+   ```
+
+   Cargo prints warnings and PowerShell may report a non-zero exit because of them. Check for `Finished` and
+   `target\release\victory.exe`.
+3. Drag your dump's folder onto **`Play-Unificado.cmd`**. After that, a double-click is enough: the folder is remembered
+   in `game-folder.txt`.
+
+A prebuilt `victory.exe` placed in `bin\` (or next to this README) is also picked up.
+
+## Measurements (one PC, for reference)
+
+**Test PC:**
+- Ryzen 7 5800X3D, RTX 3080 Ti 12 GB, 32 GB RAM, Windows 11.
+- **Resizable BAR off**, so the `VICTORY_WINDOWS_BAR_MB` / GPU-upload paths were not usable.
+
+**Method:**
+- Every run used the same save, restored fresh each time, in the prison area.
+- Each measured run lasted 5 minutes, after a warm-up run.
+- Input was scripted to get past the menus.
+- Results are the median ms per frame. Because the scene drifts between runs, they are also compared by draw count.
+
+| Build / settings | Median ms | Draws (median) | Notes |
+|---|---:|---:|---|
+| **This fork, play-3070 set, Series S, MipDrop 0** | **54.6** | 3,846 | CPU preparation 36 ms/frame. The picture was correct. |
+| cool_fox (prebuilt) + `LEVELS_ON_DEMAND=0`, `CARD_BUFFERS_MB=1024`, `CARD_WINDOWS_MB=256` | 58.6 | 5,415 | CPU preparation 46 ms/frame. |
+| cool_fox defaults (pareto-residency profile) | ~505 | n/a | GPU-bound, about 2 fps. |
+| Op-lite/victory-scarlett, its own launcher (Series X) | 288.7 | n/a | |
+| gleaf-6/VIctory-7900XTX- with the cool_fox settings above | 76.6 | 4,499 | |
+| Dolberthi/neptune-dolberth-nvidia-8gb, run-neptune.ps1 | 84 | 4,491 | Different spot in the scene (the auto-input differed). |
+| rorodev6/victory-nvidia-megafork, play-nvidia.ps1 (540p) | 81–92 | 3,446 | |
+
+By draw count, this fork against the tuned cool_fox (ms per frame):
+
+| Draws per frame | This fork | cool_fox tuned |
+|---|---:|---:|
+| 2,500–3,500 | 47.4 | 55.0 |
+| 3,500–4,500 | 51.8 | 72.3 |
+| 4,500–5,500 | 62.8 | 57.1 |
+| 5,500+ | 89.0 (few samples) | 60.5 |
+
+**What the numbers show on this PC:**
+- **The frame is CPU-bound.** Each frame copies about 115 MB of unified memory up and about 60 MB back. Lowering the
+  resolution (megafork's 540p) gained nothing.
+- **Tried and not adopted:**
+  - **Neptune's "smart copy-back"** (skipping copy-back for large shadows) lowered the copies a lot, but it drops real GPU
+    writes: 1,333 of 1,346 copied-back pieces had changed bytes.
+  - **`VICTORY_LAND_THREADS=8`** gained about 1 ms but ran out of texture room ("card has no room for more"), which made
+    the picture dark and ghosted.
+
+## History of this fork
+
+- `ee36438` imports Yaekai/victory-scarlett-3070 master as downloaded on 2026-11-26. The original repo's git history is
+  not included, so the README sections below say what it changed.
+- The next commit adds Neptune's performance overlay.
+- The commit after that adds the launcher and this README.
+
+---
+
 # victory-scarlett-3070 (8 GB NVIDIA / RTX 3070 Fork)
 
 A fork of [Op-lite/victory-scarlett](https://github.com/Op-lite/victory-scarlett) (itself based on
