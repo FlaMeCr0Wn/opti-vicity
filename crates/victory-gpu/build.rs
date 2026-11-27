@@ -42,14 +42,26 @@ fn main() {
     }
     println!("cargo:rerun-if-changed=build.rs");
     // The short commit, for the performance overlay's build label (`src/overlay.rs`).
-    let commit = std::process::Command::new("git")
-        .args(["rev-parse", "--short", "HEAD"])
-        .current_dir(&root)
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
-        .unwrap_or_else(|| "unknown".into());
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(&root)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
+    };
+    let commit = git(&["rev-parse", "--short", "HEAD"]).unwrap_or_else(|| "unknown".into());
     println!("cargo:rustc-env=VICTORY_BUILD={commit}");
+    // Looked at again when the commit changes: HEAD, the branch it names, and
+    // the packed refs (where a branch can be instead).
+    if let Some(dir) = git(&["rev-parse", "--absolute-git-dir"]).map(PathBuf::from) {
+        let branch = git(&["symbolic-ref", "-q", "HEAD"]).map(|r| dir.join(r));
+        for path in [Some(dir.join("HEAD")), branch, Some(dir.join("packed-refs"))].into_iter().flatten() {
+            if path.exists() {
+                println!("cargo:rerun-if-changed={}", path.display());
+            }
+        }
+    }
     println!("cargo:rustc-env=VICTORY_TRANSLATOR={}", hash.finalize().to_hex());
 }
