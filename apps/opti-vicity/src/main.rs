@@ -50,13 +50,13 @@ mod ui {
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         AdjustWindowRectEx, CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, DispatchMessageW,
-        GetMessageW, GetSystemMetrics, IDC_ARROW, IsDialogMessageW, LoadCursorW, LoadIconW, MSG,
-        PostMessageW, PostQuitMessage, RegisterClassExW, SM_CXSCREEN, SM_CYSCREEN, SW_MINIMIZE,
-        SW_RESTORE, SW_SHOW, SW_SHOWNORMAL, SendMessageW, SetForegroundWindow, SetWindowTextW,
-        ShowWindow, TranslateMessage, WM_APP, WM_CLOSE, WM_COMMAND, WM_CTLCOLORBTN,
-        WM_CTLCOLORSTATIC, WM_DESTROY, WM_PAINT, WM_SETFONT, WNDCLASSEXW, WS_CAPTION, WS_CHILD,
-        WS_EX_ACCEPTFILES, WS_EX_CLIENTEDGE, WS_EX_TOPMOST, WS_MINIMIZEBOX, WS_OVERLAPPED,
-        WS_POPUP, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+        GetMessageW, GetSystemMetrics, IDC_ARROW, IsDialogMessageW, LoadCursorW, LoadIconW,
+        MB_ICONWARNING, MB_OK, MSG, MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassExW,
+        SM_CXSCREEN, SM_CYSCREEN, SW_MINIMIZE, SW_RESTORE, SW_SHOW, SW_SHOWNORMAL, SendMessageW,
+        SetForegroundWindow, SetWindowTextW, ShowWindow, TranslateMessage, WM_APP, WM_CLOSE,
+        WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLORSTATIC, WM_DESTROY, WM_PAINT, WM_SETFONT,
+        WNDCLASSEXW, WS_CAPTION, WS_CHILD, WS_EX_ACCEPTFILES, WS_EX_CLIENTEDGE, WS_EX_TOPMOST,
+        WS_MINIMIZEBOX, WS_OVERLAPPED, WS_POPUP, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
     };
 
     use crate::settings::{self, Config, t};
@@ -950,6 +950,49 @@ mod ui {
                 set_marquee(c.progress, false);
                 refresh();
                 status(&format!("{}: {why}", t("Falhou", "Failed")), RED);
+            }
+            Event::Blocked => {
+                status(
+                    t(
+                        "O Windows bloqueou o jogo (Controle de Aplicativo Inteligente).",
+                        "Windows blocked the game (Smart App Control).",
+                    ),
+                    RED,
+                );
+                let text = wide(t(
+                    "O Windows bloqueou um arquivo que o jogo precisa carregar \
+                     (\"Uma política de Controle de Aplicativo bloqueou este arquivo\", erro 4551).\n\n\
+                     O opti-vicity converte o executável do jogo numa DLL feita no seu PC, sem \
+                     assinatura digital. O Controle de Aplicativo Inteligente do Windows 11 bloqueia \
+                     arquivos assim.\n\n\
+                     Para jogar, desative-o em:\n\
+                     Segurança do Windows > Controle de aplicativos e navegador > \
+                     Configurações do Controle de Aplicativo Inteligente > Desativado\n\n\
+                     Atenção: em várias versões do Windows 11, depois de desativado ele só pode ser \
+                     ligado de novo reinstalando ou restaurando o Windows.\n\n\
+                     Se ele já estiver desativado, o bloqueio vem de uma política da empresa ou da \
+                     escola (ou do Windows no modo S): fale com quem administra o PC.",
+                    "Windows blocked a file the game needs to load \
+                     (\"An Application Control policy has blocked this file\", error 4551).\n\n\
+                     opti-vicity turns the game's executable into a DLL made on your PC, without a \
+                     digital signature. Windows 11's Smart App Control blocks files like that.\n\n\
+                     To play, turn it off in:\n\
+                     Windows Security > App & browser control > Smart App Control settings > Off\n\n\
+                     Note: on several Windows 11 versions, once turned off it can only be turned on \
+                     again by reinstalling or resetting Windows.\n\n\
+                     If it is already off, the block comes from a work or school policy (or Windows \
+                     in S mode): ask whoever manages the PC.",
+                ));
+                let caption = wide(t("Jogo bloqueado pelo Windows", "Game blocked by Windows"));
+                // SAFETY: NUL-terminated texts that outlive the call; our window as owner.
+                unsafe {
+                    MessageBoxW(
+                        h(c.window),
+                        text.as_ptr(),
+                        caption.as_ptr(),
+                        MB_OK | MB_ICONWARNING,
+                    )
+                };
             }
         }
     }

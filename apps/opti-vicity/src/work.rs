@@ -29,6 +29,10 @@ pub enum Event {
     /// The game closed (its exit code), and the diagnostic session folder if one was kept.
     Exited(Option<i32>, Option<PathBuf>),
     Failed(String),
+    /// Windows refused to load a file the engine makes from the game's exe:
+    /// Smart App Control or another application-control policy (the log
+    /// says so; shown after `Exited`).
+    Blocked,
 }
 
 /// What one press of Play (or Prepare) asks for.
@@ -217,6 +221,33 @@ fn run(plan: &Plan, post: &impl Fn(Event)) {
         crate::diag::summarize(dir, &seen);
     }
     post(Event::Exited(code, session));
+    if code != Some(0) && blocked_by_app_control(&log_tail(&log_path)) {
+        post(Event::Blocked);
+    }
+}
+
+/// The last 64 KiB of the game log (the error is the run's last line).
+fn log_tail(path: &std::path::Path) -> String {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return String::new();
+    };
+    let len = file.metadata().map_or(0, |m| m.len());
+    let _ = file.seek(SeekFrom::Start(len.saturating_sub(64 * 1024)));
+    let mut bytes = Vec::new();
+    let _ = file.read_to_end(&mut bytes);
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// Whether the log says Windows' application control refused a file:
+/// ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION (4551), or one of Smart App
+/// Control's reputation refusals (4556 to 4559). The loader turns the game's
+/// exe into an unsigned DLL in the cache and loads it; with Smart App
+/// Control on, Windows refuses it ("os error 4551").
+fn blocked_by_app_control(log: &str) -> bool {
+    [4551, 4556, 4557, 4558, 4559]
+        .iter()
+        .any(|code| log.contains(&format!("(os error {code})")))
 }
 
 /// Where a game log is, for the window's Logs button.
@@ -226,6 +257,18 @@ pub fn logs_folder() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn application_control_refusals_are_seen() {
+        let line = "Error: LoadLibraryExW(C:\\x\\victory-image-b99f876b74d4a77f.dll) failed: Uma política de \
+                    Controle de Aplicativo bloqueou este arquivo. (os error 4551)";
+        assert!(super::blocked_by_app_control(line));
+        assert!(super::blocked_by_app_control("... (os error 4558)\n"));
+        assert!(!super::blocked_by_app_control(
+            "failed: Access is denied. (os error 5)"
+        ));
+        assert!(!super::blocked_by_app_control("(os error 45510)"));
+    }
+
     #[test]
     fn progress_lines_parse() {
         assert_eq!(super::progress("progress 100 of 25889"), Some((100, 25889)));
