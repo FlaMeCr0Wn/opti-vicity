@@ -85,3 +85,6 @@ game-folder.txt
 # Local builds of the shareable exe (paths remapped)
 /target-share/
 /target-diag/
+
+# NVIDIA's DLSS files (Get-NVIDIA-DLSS.cmd): NVIDIA's licence, never committed or shipped
+/nvidia-sdk/

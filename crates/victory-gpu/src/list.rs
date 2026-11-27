@@ -151,11 +151,31 @@ struct Part {
 const _: () = assert!(offset_of!(List, put) == 0x18);
 const _: () = assert!(offset_of!(List, pipeline_shadow) + 32 == 0x560);
 
+/// Host work recorded at a place of a title list (`crate::streamline`):
+/// true if it recorded anything (the list's state is then set again).
+#[cfg(windows)]
+pub(crate) type External = Box<dyn FnOnce(&crate::host::HostList) -> bool + Send>;
+
+/// Runs `work` at this place of title list `this`, now. False if the list
+/// records nowhere. (trustno1's fork; its thin-list path is not here.)
+#[cfg(windows)]
+pub(crate) fn external(this: This, work: External) -> bool {
+    if this.is_null() || host_list(this).is_none() {
+        return false;
+    }
+    with_state(this, |host, state| {
+        if work(host) {
+            state.replay(host);
+        }
+    });
+    true
+}
+
 /// Runs `f` with the host list and draw state of a title list, if there
 /// is a host GPU.
 #[cfg(windows)]
 #[track_caller]
-fn with_state(this: This, f: impl FnOnce(&crate::host::HostList, &mut crate::draw::State)) {
+pub(crate) fn with_state(this: This, f: impl FnOnce(&crate::host::HostList, &mut crate::draw::State)) {
     // (Coder W, diagnostics) By the list call that asked.
     #[cfg(feature = "diagnostics")]
     let at = std::panic::Location::caller();

@@ -36,6 +36,14 @@ pub struct Config {
     /// second of memory and disk, with F8 marking the hitches felt
     /// (`logs\diag\<date_time>\`).
     pub diagnostic: bool,
+    /// Who upscales: "game" (the console FSR, 1280x720 in only), "fsr" (AMD FSR 3.1 for PC) or
+    /// "dlss" (NVIDIA DLSS, RTX cards, with the files Get-NVIDIA-DLSS.cmd fetches).
+    pub upscaler: String,
+    /// The scene's size against the picture's: quality, balanced, performance,
+    /// ultraperformance or native.
+    pub render_scale: String,
+    /// Frame generation: "0" (off), "amd" (AMD FSR 3, 2x) or "2" to "6" (DLSS, RTX 40 and later).
+    pub framegen: String,
 }
 
 impl Default for Config {
@@ -47,6 +55,9 @@ impl Default for Config {
             small_card: false,
             mouse: 1.0,
             diagnostic: false,
+            upscaler: "game".into(),
+            render_scale: "quality".into(),
+            framegen: "0".into(),
         }
     }
 }
@@ -70,6 +81,9 @@ impl Config {
                 "small_card" => cfg.small_card = on,
                 "mouse" => cfg.mouse = value.parse().unwrap_or(1.0),
                 "diagnostic" => cfg.diagnostic = on,
+                "upscaler" if !value.is_empty() => cfg.upscaler = value.to_ascii_lowercase(),
+                "render_scale" if !value.is_empty() => cfg.render_scale = value.to_ascii_lowercase(),
+                "framegen" if !value.is_empty() => cfg.framegen = value.to_ascii_lowercase(),
                 _ => {}
             }
         }
@@ -83,12 +97,15 @@ impl Config {
             .map(|g| g.display().to_string())
             .unwrap_or_default();
         let text = format!(
-            "game={game}\nseries_x={}\noverlay={}\nsmall_card={}\nmouse={}\ndiagnostic={}\n",
+            "game={game}\nseries_x={}\noverlay={}\nsmall_card={}\nmouse={}\ndiagnostic={}\nupscaler={}\nrender_scale={}\nframegen={}\n",
             u8::from(self.series_x),
             u8::from(self.overlay),
             u8::from(self.small_card),
             self.mouse,
-            u8::from(self.diagnostic)
+            u8::from(self.diagnostic),
+            self.upscaler,
+            self.render_scale,
+            self.framegen
         );
         let _ = std::fs::create_dir_all(local_dir());
         let _ = std::fs::write(config_file(), text);
@@ -103,7 +120,7 @@ pub fn local_dir() -> PathBuf {
         .join("opti-vicity")
 }
 
-fn config_file() -> PathBuf {
+pub fn config_file() -> PathBuf {
     local_dir().join("launcher.ini")
 }
 
@@ -258,6 +275,11 @@ pub fn environment(cfg: &Config, game: &Path, cache: &Path) -> Vec<(String, Stri
     if !cfg.overlay {
         set.push(("VICTORY_OVERLAY".into(), "0".into()));
     }
+    set.extend(upscaling(cfg));
+    // The F1 menu writes its choices into the launcher's settings, and "save
+    // and restart" ends the game with code 82 for the launcher to start it again.
+    set.push(("VICTORY_MENU_FILE".into(), config_file().display().to_string()));
+    set.push(("VICTORY_MENU_RESTART".into(), "1".into()));
     if cfg.diagnostic {
         // The detailed log, a line for every long frame with what it was
         // made of, and where the threads wait when no frame comes for 5 s.
@@ -271,4 +293,110 @@ pub fn environment(cfg: &Config, game: &Path, cache: &Path) -> Vec<(String, Stri
         }
     }
     set
+}
+
+/// The folders a release or a build keeps beside the launcher: the launcher's
+/// own, the engine's and a few above (a build in `target\release`).
+fn near() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+        dirs.extend(dir.ancestors().take(4).map(Path::to_path_buf));
+        dirs.push(dir.join("bin"));
+    }
+    dirs
+}
+
+/// AMD's FidelityFX for PC (MIT, shipped in `fidelityfx\`): its upscaler and frame generation.
+pub fn fidelityfx_dir() -> Option<PathBuf> {
+    near()
+        .into_iter()
+        .map(|d| d.join("fidelityfx"))
+        .find(|d| d.join("amd_fidelityfx_upscaler_dx12.dll").is_file() && d.join("amd_fidelityfx_loader_dx12.dll").is_file())
+}
+
+/// NVIDIA's Streamline with DLSS (`nvidia-sdk\Streamline\bin\x64`, fetched by
+/// `Get-NVIDIA-DLSS.cmd`: NVIDIA's licence, never shipped).
+pub fn streamline_dir() -> Option<PathBuf> {
+    near()
+        .into_iter()
+        .map(|d| d.join(r"nvidia-sdk\Streamline\bin\x64"))
+        .find(|d| d.join("sl.interposer.dll").is_file() && d.join("nvngx_dlss.dll").is_file())
+}
+
+/// What runs from the launcher's choices, once what is missing is left out:
+/// the upscaler ("game", "fsr" or "dlss") and frame generation ("0", "amd", "2".."6").
+/// AMD's frame generation is fed by AMD's upscaler; DLSS's goes with DLSS or the game's.
+pub fn resolved(cfg: &Config) -> (&'static str, String) {
+    let fsr = fidelityfx_dir().is_some();
+    let nvidia = streamline_dir().is_some();
+    let dlss_fg = matches!(cfg.framegen.as_str(), "2" | "3" | "4" | "5" | "6");
+    let mut upscaler = match cfg.upscaler.as_str() {
+        "fsr" => "fsr",
+        "dlss" => "dlss",
+        _ => "game",
+    };
+    if cfg.framegen == "amd" {
+        upscaler = "fsr";
+    } else if dlss_fg && upscaler == "fsr" {
+        upscaler = "dlss";
+    }
+    if upscaler == "dlss" && !nvidia {
+        upscaler = if fsr { "fsr" } else { "game" };
+    }
+    if upscaler == "fsr" && !fsr {
+        upscaler = "game";
+    }
+    let framegen = match cfg.framegen.as_str() {
+        "amd" if upscaler == "fsr" => "amd".to_owned(),
+        x if dlss_fg && nvidia && upscaler != "fsr" => x.to_owned(),
+        _ => "0".to_owned(),
+    };
+    (upscaler, framegen)
+}
+
+/// The upscaling and frame generation switches. A frame generation that is
+/// there but off is still made ready (AMD's with FSR, DLSS's with DLSS), for the
+/// F1 menu to turn it on while the game runs.
+fn upscaling(cfg: &Config) -> Vec<(String, String)> {
+    let (upscaler, framegen) = resolved(cfg);
+    let mut set: Vec<(String, String)> = Vec::new();
+    let mut put = |k: &str, v: String| set.push((k.to_owned(), v));
+    let scale = match cfg.render_scale.as_str() {
+        s @ ("quality" | "balanced" | "performance" | "ultraperformance" | "native") => s,
+        _ => "quality",
+    };
+    let dlss_fg = framegen != "0" && framegen != "amd";
+    match upscaler {
+        "fsr" => {
+            if let Some(dir) = fidelityfx_dir() {
+                put("VICTORY_FIDELITYFX_DIR", dir.display().to_string());
+            }
+            put("VICTORY_RENDER_SCALE", scale.into());
+            put("VICTORY_FRAMEGEN", "amd".into());
+            put("VICTORY_FRAMEGEN_START", if framegen == "amd" { "1" } else { "0" }.into());
+        }
+        "dlss" => {
+            put("VICTORY_DLSS", "1".into());
+            put("VICTORY_DLSS_MODE", if scale == "native" { "dlaa" } else { scale }.into());
+            // Where DLSS does not start after all (no RTX card): AMD's, at the same scale.
+            if let Some(dir) = fidelityfx_dir() {
+                put("VICTORY_FIDELITYFX_DIR", dir.display().to_string());
+                put("VICTORY_RENDER_SCALE", scale.into());
+            }
+        }
+        _ => {}
+    }
+    if upscaler == "dlss" || dlss_fg {
+        if let Some(dir) = streamline_dir() {
+            put("VICTORY_STREAMLINE_DIR", dir.display().to_string());
+        }
+        put("VICTORY_FRAMEGEN", "dlss".into());
+        put("VICTORY_FRAMEGEN_X", if dlss_fg { framegen.clone() } else { "0".into() });
+    }
+    set
+}
+
+/// `Get-NVIDIA-DLSS.cmd`, which fetches NVIDIA's files into `nvidia-sdk\` beside it.
+pub fn nvidia_script() -> Option<PathBuf> {
+    near().into_iter().map(|d| d.join("Get-NVIDIA-DLSS.cmd")).find(|p| p.is_file())
 }

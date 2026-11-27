@@ -34,7 +34,20 @@ pub mod device;
 #[cfg(windows)]
 mod draw;
 pub mod dxgi;
+#[cfg(windows)]
+pub mod external;
 pub mod fence;
+#[cfg(windows)]
+pub mod info;
+#[cfg(windows)]
+pub mod menu;
+
+/// The F1 options menu is shown: the title gets no keyboard or mouse (`menu::input_blocked`).
+pub static SETTINGS_MENU_OPEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[cfg(windows)]
+pub mod framegen;
+#[cfg(windows)]
+pub mod streamline;
 pub mod frame;
 pub mod chunks; // (fox port A) F21 arena chunk meter (VICTORY_CHUNK_METER)
 #[cfg(windows)] pub mod framelog; // (fox port A) frame log, VICTORY_FRAME_LOG

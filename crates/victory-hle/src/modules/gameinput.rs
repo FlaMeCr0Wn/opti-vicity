@@ -1649,7 +1649,7 @@ mod host {
 
         fn keys(&mut self) -> Vec<KeyState> {
             let mut down = scripted();
-            if focused() {
+            if focused() && !victory_gpu::menu::input_blocked() {
                 // Left/right modifier keys only, as devices report them; no
                 // mouse buttons (below 0x08).
                 let held: Vec<u8> = (0x08..=0xFE_u8)
@@ -1794,6 +1794,10 @@ mod host {
             std::env::var("VICTORY_MOUSE").ok().and_then(|v| v.trim().parse().ok()).unwrap_or(1.0)
         });
         if *SCALE == 0.0 {
+            return Mouse::default();
+        }
+        // The F1 options menu is shown: the title sees no mouse (the pointer stays as it is).
+        if victory_gpu::menu::input_blocked() {
             return Mouse::default();
         }
         let mut held = HELD.lock().unwrap_or_else(PoisonError::into_inner);

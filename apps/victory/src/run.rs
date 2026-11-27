@@ -53,15 +53,93 @@ pub fn run(
     // A title that relaunched itself: the old process must be gone first.
     victory_hle::modules::lifecycle::wait_for_previous();
     let cfg = victory_core::Config::load()?;
+    // DLSS and DLSS frame generation (`VICTORY_DLSS=1`, `VICTORY_FRAMEGEN=dlss`,
+    // trustno1's fork): Streamline is loaded before anything of the title or
+    // the host GPU, and fails soft; DLSS then takes the title's FidelityFX
+    // upscalings (`victory_hle::modules::dlss`).
+    let asked = victory_hle::streamline::Asked::from_env().map_err(anyhow::Error::msg)?;
+    let available = victory_hle::streamline::init(&asked);
+    if asked.any() {
+        println!(
+            "upscaling      DLSS {}, DLSS frame generation {}",
+            if available.dlss { "on" } else if asked.dlss { "asked, not available" } else { "off" },
+            if available.framegen { "on" } else if asked.framegen { "asked, not available" } else { "off" },
+        );
+    }
+    // AMD's PC FidelityFX, when a folder that holds it is named
+    // (`VICTORY_FIDELITYFX_DIR`, the SDK's `signedbin`) and DLSS does not
+    // upscale: it serves the title's upscaler calls (any render scale) and
+    // feeds AMD's frame generation (`VICTORY_FRAMEGEN=amd`). Before the import
+    // registry is first used.
+    let fidelityfx = std::env::var_os("VICTORY_FIDELITYFX_DIR")
+        .map(std::path::PathBuf::from)
+        .filter(|_| !available.dlss);
+    let pc_upscaler = match victory_hle::modules::fidelityfx::use_host_dir(fidelityfx.as_deref()) {
+        Ok(versions) => {
+            println!("upscaling      AMD's PC FidelityFX ({versions})");
+            true
+        }
+        Err(why) => {
+            if fidelityfx.is_some() {
+                println!("upscaling      the title's own FidelityFX: {why}");
+            }
+            false
+        }
+    };
+    victory_hle::info::note_upscaler(if available.dlss {
+        "DLSS"
+    } else if pc_upscaler {
+        "FSR 3.1"
+    } else {
+        "game"
+    });
     let original = std::fs::read(exe).with_context(|| format!("reading {}", exe.display()))?;
-    let prepared = victory_loader::prepare(&original)?;
+    let mut prepared = victory_loader::prepare(&original)?;
     let hash = prepared.original_hash.to_hex();
     match victory_game::identify(&hash) {
         Some(build) => println!("build          {} ({hash})", build.label),
         None => println!("build          unknown ({hash})"),
     }
 
-    let images = cfg.cache_subdir("images")?;
+    // `VICTORY_RENDER_SCALE`: the scene at a scale of the output through the
+    // title's FidelityFX path (`render_scale`); the patched image goes to a
+    // folder of its own, beside the stock one.
+    // With DLSS and no scale named, `VICTORY_DLSS_MODE`'s (the title must
+    // render through its FidelityFX path for DLSS to take it).
+    let named = std::env::var("VICTORY_RENDER_SCALE").ok().filter(|s| !s.trim().is_empty());
+    let named = named.or_else(|| available.dlss.then(|| asked.mode.name().to_owned()));
+    let scale = match named {
+        None => None,
+        Some(name) => Some(crate::render_scale::Mode::from_name(&name).with_context(|| {
+            format!("VICTORY_RENDER_SCALE={name}: native, quality, balanced, performance or ultraperformance")
+        })?),
+    };
+    let images = match scale {
+        Some(mode) if mode != crate::render_scale::Mode::Quality && !pc_upscaler && !available.dlss => {
+            println!(
+                "render scale   {} left out: the title's own FidelityFX takes 1280x720 in only; \
+                 smaller scales need AMD's PC one (VICTORY_FIDELITYFX_DIR)",
+                mode.name()
+            );
+            cfg.cache_subdir("images")?
+        }
+        Some(mode) => match crate::render_scale::prepare(&mut prepared, mode) {
+            Ok(()) => {
+                let [w, h] = mode.render_size(match console {
+                    Console::SeriesX => [3840, 2160],
+                    Console::SeriesS => [1920, 1080],
+                });
+                println!("render scale   {} ({}): scene {w}x{h} through the FidelityFX path", mode.name(), mode.scale());
+                victory_hle::info::note_scale(mode.scale());
+                cfg.cache_subdir(&format!("images/scale-{}", mode.name()))?
+            }
+            Err(e) => {
+                println!("render scale   not patched in: {e:#}");
+                cfg.cache_subdir("images")?
+            }
+        },
+        None => cfg.cache_subdir("images")?,
+    };
     victory_hle::modules::d3d12x::use_shader_cache(cfg.cache_subdir("shaders")?);
     let image = victory_loader::load(&prepared, &images)?;
     // The program is mapped from the copy `load` wrote: the file's bytes
@@ -162,7 +240,10 @@ pub fn run(
         show(name, dll.bind_imports(&with_dlls, policy)?);
     }
     let exe_name = exe.file_name().unwrap_or_default().to_string_lossy();
-    show(&exe_name, image.bind_imports(&with_dlls, policy)?);
+    // The title's FidelityFX calls go through ours when DLSS or DLSS frame
+    // generation is on (bound as before otherwise).
+    let interposed = victory_hle::modules::dlss::Interpose { inner: &with_dlls };
+    show(&exe_name, image.bind_imports(&interposed, policy)?);
     if execute {
         let size = image.info().size_of_image as usize;
         // SAFETY: the image stays mapped, and nothing of it has run yet.

@@ -29,6 +29,12 @@ pub mod runtime;
 pub use host::HostPolicy;
 pub use registry::{HleExport, HleModule, registry};
 pub use victory_gpu::console;
+/// DLSS and DLSS frame generation (`VICTORY_DLSS`, `VICTORY_FRAMEGEN=dlss`).
+#[cfg(windows)]
+pub use victory_gpu::streamline;
+/// What the overlay and the F1 menu say about the picture.
+#[cfg(windows)]
+pub use victory_gpu::info;
 #[cfg(all(windows, feature = "diagnostics"))]
 pub use victory_gpu::replay;
 

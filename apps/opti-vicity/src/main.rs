@@ -105,6 +105,35 @@ mod ui {
     const ID_PLAY: usize = 109;
     const ID_PREPARE: usize = 110;
     const ID_LOGS: usize = 111;
+    const ID_UPSCALER: usize = 112;
+    const ID_SCALE: usize = 113;
+    const ID_FRAMEGEN: usize = 114;
+    const ID_NVIDIA: usize = 115;
+
+    /// The upscaler list: (setting, Portuguese, English).
+    const UPSCALERS: [(&str, &str, &str); 3] = [
+        ("game", "Do jogo (FSR do console)", "The game's (console FSR)"),
+        ("fsr", "AMD FSR 3.1 (qualquer placa)", "AMD FSR 3.1 (any card)"),
+        ("dlss", "NVIDIA DLSS (RTX)", "NVIDIA DLSS (RTX)"),
+    ];
+    /// The render scales.
+    const SCALES: [(&str, &str, &str); 5] = [
+        ("quality", "Qualidade (67%)", "Quality (67%)"),
+        ("balanced", "Equilibrado (59%)", "Balanced (59%)"),
+        ("performance", "Desempenho (50%)", "Performance (50%)"),
+        ("ultraperformance", "Ultra desempenho (33%)", "Ultra performance (33%)"),
+        ("native", "Nativa (100%)", "Native (100%)"),
+    ];
+    /// Frame generation.
+    const FRAMEGENS: [(&str, &str, &str); 7] = [
+        ("0", "Desligada", "Off"),
+        ("amd", "AMD FSR 3 (2x, qualquer placa)", "AMD FSR 3 (2x, any card)"),
+        ("2", "DLSS 2x (RTX 40/50)", "DLSS 2x (RTX 40/50)"),
+        ("3", "DLSS 3x (RTX 50)", "DLSS 3x (RTX 50)"),
+        ("4", "DLSS 4x (RTX 50)", "DLSS 4x (RTX 50)"),
+        ("5", "DLSS 5x (RTX 50)", "DLSS 5x (RTX 50)"),
+        ("6", "DLSS 6x (RTX 50)", "DLSS 6x (RTX 50)"),
+    ];
 
     /// Mouse speeds in the list (0 = off).
     const MOUSE_SPEEDS: [f32; 7] = [0.0, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
@@ -120,6 +149,10 @@ mod ui {
         card: isize,
         mouse: isize,
         diag: isize,
+        upscaler: isize,
+        scale: isize,
+        framegen: isize,
+        nvidia: isize,
         progress: isize,
         status: isize,
         play: isize,
@@ -336,7 +369,7 @@ mod ui {
     }
 
     const WIDTH: i32 = 600;
-    const HEIGHT: i32 = 404;
+    const HEIGHT: i32 = 482;
     const HEADER_H: i32 = 76;
     const PAD: i32 = 24;
 
@@ -520,6 +553,30 @@ mod ui {
             ui,
         );
         y += 38;
+        // Upscaling and frame generation (F1 in the game changes them too).
+        let combo = |x: i32, y: i32, w: i32, id: usize| {
+            make(0, "COMBOBOX", "", CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL, x, y, w, 260, id, ui)
+        };
+        make(0, "STATIC", t("Upscaler", "Upscaler"), SS_NOPREFIX, PAD, y + 4, 100, 20, 0, ui);
+        let upscaler = combo(PAD + 100, y, 180, ID_UPSCALER);
+        make(0, "STATIC", t("Resolução", "Resolution"), SS_NOPREFIX, PAD + 300, y + 4, 75, 20, 0, ui);
+        let scale = combo(PAD + 375, y, inner - 375, ID_SCALE);
+        y += 38;
+        make(0, "STATIC", t("Ger. quadros", "Frame gen"), SS_NOPREFIX, PAD, y + 4, 100, 20, 0, ui);
+        let framegen = combo(PAD + 100, y, 180, ID_FRAMEGEN);
+        let nvidia = make(
+            0,
+            "BUTTON",
+            t("Baixar arquivos do DLSS (NVIDIA)", "Get the DLSS files (NVIDIA)"),
+            BS_PUSHBUTTON | WS_TABSTOP,
+            PAD + 300,
+            y - 1,
+            inner - 300,
+            28,
+            ID_NVIDIA,
+            ui,
+        );
+        y += 40;
         let diag = make(
             0,
             "BUTTON",
@@ -617,6 +674,12 @@ mod ui {
                 let label = wide(&label);
                 SendMessageW(h(mouse), CB_ADDSTRING, 0, label.as_ptr() as isize);
             }
+            for (list, items) in [(upscaler, &UPSCALERS[..]), (scale, &SCALES[..]), (framegen, &FRAMEGENS[..])] {
+                for &(_, pt, en) in items {
+                    let label = wide(t(pt, en));
+                    SendMessageW(h(list), CB_ADDSTRING, 0, label.as_ptr() as isize);
+                }
+            }
         }
         let _ = CONTROLS.set(Controls {
             window,
@@ -627,6 +690,10 @@ mod ui {
             card,
             mouse,
             diag,
+            upscaler,
+            scale,
+            framegen,
+            nvidia,
             progress,
             status,
             play,
@@ -655,20 +722,66 @@ mod ui {
                 "Detailed log, every long frame, and memory/disk each second, in Logs\\diag. A beep confirms each F8.",
             ),
         );
-        // The saved choices.
+        tooltip(
+            window,
+            instance,
+            upscaler,
+            t(
+                "Quem aumenta a imagem. O FSR do jogo só aceita a resolução Qualidade; AMD FSR 3.1 e DLSS aceitam todas.",
+                "Who upscales the picture. The game's FSR takes Quality only; AMD FSR 3.1 and DLSS take them all.",
+            ),
+        );
+        tooltip(
+            window,
+            instance,
+            framegen,
+            t(
+                "AMD: qualquer placa (usa o AMD FSR 3.1). DLSS: RTX 40/50 e os arquivos da NVIDIA. No jogo, F1 abre as opções e liga ou desliga na hora.",
+                "AMD: any card (uses AMD FSR 3.1). DLSS: RTX 40/50 and NVIDIA's files. In the game, F1 opens the options and switches it at once.",
+            ),
+        );
+        tooltip(
+            window,
+            instance,
+            nvidia,
+            t(
+                "Baixa do GitHub da NVIDIA (~70 MB, licença da NVIDIA) os arquivos que o DLSS precisa. Não vêm com o opti-vicity.",
+                "Fetches from NVIDIA's GitHub (~70 MB, NVIDIA's licence) the files DLSS needs. They do not come with opti-vicity.",
+            ),
+        );
+        show_options();
+    }
+
+    /// Puts the saved choices in the controls.
+    fn show_options() {
+        let c = ctl();
         let cfg = state(|st| st.cfg.clone());
+        let at = |list: &[(&str, &str, &str)], value: &str| list.iter().position(|(v, _, _)| *v == value).unwrap_or(0);
         // SAFETY: live controls.
         unsafe {
-            SendMessageW(h(series_x), BM_SETCHECK, usize::from(cfg.series_x), 0);
-            SendMessageW(h(overlay), BM_SETCHECK, usize::from(cfg.overlay), 0);
-            SendMessageW(h(diag), BM_SETCHECK, usize::from(cfg.diagnostic), 0);
-            SendMessageW(h(card), CB_SETCURSEL, usize::from(cfg.small_card), 0);
+            SendMessageW(h(c.series_x), BM_SETCHECK, usize::from(cfg.series_x), 0);
+            SendMessageW(h(c.overlay), BM_SETCHECK, usize::from(cfg.overlay), 0);
+            SendMessageW(h(c.diag), BM_SETCHECK, usize::from(cfg.diagnostic), 0);
+            SendMessageW(h(c.card), CB_SETCURSEL, usize::from(cfg.small_card), 0);
             let pick = MOUSE_SPEEDS
                 .iter()
                 .position(|&m| (m - cfg.mouse).abs() < 0.01)
                 .unwrap_or(3);
-            SendMessageW(h(mouse), CB_SETCURSEL, pick, 0);
+            SendMessageW(h(c.mouse), CB_SETCURSEL, pick, 0);
+            SendMessageW(h(c.upscaler), CB_SETCURSEL, at(&UPSCALERS, &cfg.upscaler), 0);
+            SendMessageW(h(c.scale), CB_SETCURSEL, at(&SCALES, &cfg.render_scale), 0);
+            SendMessageW(h(c.framegen), CB_SETCURSEL, at(&FRAMEGENS, &cfg.framegen), 0);
         }
+        let nvidia = settings::streamline_dir().is_some();
+        set_text(
+            c.nvidia,
+            if nvidia {
+                t("Arquivos do DLSS: instalados", "DLSS files: installed")
+            } else {
+                t("Baixar arquivos do DLSS (NVIDIA)", "Get the DLSS files (NVIDIA)")
+            },
+        );
+        enable(c.nvidia, !nvidia && settings::nvidia_script().is_some());
     }
 
     fn tooltip(window: isize, instance: *mut c_void, tool: isize, text: &str) {
@@ -752,7 +865,7 @@ mod ui {
         enable(c.prepare, ready);
         enable(c.browse, busy == Busy::Idle);
         enable(c.show, game.is_some());
-        for control in [c.series_x, c.overlay, c.card, c.mouse, c.diag] {
+        for control in [c.series_x, c.overlay, c.card, c.mouse, c.diag, c.upscaler, c.scale, c.framegen] {
             enable(control, busy == Busy::Idle);
         }
     }
@@ -788,7 +901,17 @@ mod ui {
         };
         let (series_x, overlay, diagnostic) =
             (checked(c.series_x), checked(c.overlay), checked(c.diag));
+        let pick = |list: isize, items: &[(&'static str, &str, &str)]| {
+            // SAFETY: a live combo box.
+            let i = unsafe { SendMessageW(h(list), CB_GETCURSEL, 0, 0) };
+            items.get(usize::try_from(i).unwrap_or(0)).map_or(items[0].0, |item| item.0).to_owned()
+        };
+        let (upscaler, render_scale, framegen) =
+            (pick(c.upscaler, &UPSCALERS), pick(c.scale, &SCALES), pick(c.framegen, &FRAMEGENS));
         state(|st| {
+            st.cfg.upscaler = upscaler;
+            st.cfg.render_scale = render_scale;
+            st.cfg.framegen = framegen;
             st.cfg.series_x = series_x;
             st.cfg.overlay = overlay;
             st.cfg.diagnostic = diagnostic;
@@ -905,10 +1028,26 @@ mod ui {
                         GREEN,
                     );
                 } else {
-                    status(t("Jogo aberto", "Game running"), GREEN);
+                    status(t("Jogo aberto  (F1 no jogo: opções, F10: painel)", "Game running  (in the game, F1: options, F10: panel)"), GREEN);
                 }
                 // SAFETY: our window.
                 unsafe { ShowWindow(h(c.window), SW_MINIMIZE) };
+            }
+            Event::Exited(Some(82), _) => {
+                // "Save and restart" in the F1 menu: its choices are in the
+                // settings file; the game starts again with them.
+                state(|st| {
+                    st.busy = Busy::Idle;
+                    let game = st.cfg.game.clone();
+                    st.cfg = Config::load();
+                    if st.cfg.game.is_none() {
+                        st.cfg.game = game;
+                    }
+                });
+                show_options();
+                refresh();
+                status(t("Reiniciando com as novas opções…", "Restarting with the new options…"), GRAY);
+                go(true, false);
             }
             Event::Exited(code, session) => {
                 state(|st| st.busy = Busy::Idle);
@@ -1190,7 +1329,20 @@ mod ui {
                         open("explorer.exe", &format!("\"{}\"", logs.display()));
                     }
                     ID_SERIES_X | ID_OVERLAY | ID_DIAG if code == BN_CLICKED => read_options(),
-                    ID_CARD | ID_MOUSE if code == CBN_SELCHANGE => read_options(),
+                    ID_CARD | ID_MOUSE | ID_UPSCALER | ID_SCALE | ID_FRAMEGEN if code == CBN_SELCHANGE => read_options(),
+                    ID_NVIDIA if code == BN_CLICKED => {
+                        // The person's own download, in a console of its own, from NVIDIA.
+                        if let Some(script) = settings::nvidia_script() {
+                            open("cmd.exe", &format!("/c \"\"{}\"\"", script.display()));
+                            status(
+                                t(
+                                    "Baixando os arquivos do DLSS na outra janela; depois abra o launcher de novo.",
+                                    "Getting the DLSS files in the other window; then open the launcher again.",
+                                ),
+                                GRAY,
+                            );
+                        }
+                    }
                     _ => {}
                 }
                 0

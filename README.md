@@ -11,7 +11,9 @@
 Runs your own Xbox Series dump of the title on a Windows PC, with:
 
 - a **one-window launcher** (drag the game folder in, press Play);
-- a **performance overlay** (F10);
+- a **performance overlay** (F10) that also shows the console, the render and output sizes, the upscaler and frame generation;
+- a **lower render resolution** through AMD FSR 3.1 (any card) or NVIDIA DLSS (RTX), and **frame generation**: AMD FSR 3 (2x, any card) or DLSS (2x to 6x, RTX 40/50);
+- an **options menu in the game** (F1) that switches frame generation at once;
 - **mouse and keyboard** controls;
 - **first runs that load completely**.
 
@@ -26,7 +28,12 @@ publisher. It is licensed GPL-3.0-or-later, like everything it is built on.
 >   Arraste a pasta do jogo para a janela e clique em **Jogar**.
 > - **Primeira vez:** o launcher prepara os shaders (com barra de progresso) e a primeira sessão é mais lenta. Feche e
 >   abra de novo, e daí em diante carrega completo.
-> - **Overlay:** o F10 mostra/esconde FPS, ms, draws, CPU, GPU, RAM e VRAM.
+> - **Overlay:** o F10 mostra/esconde FPS, ms, draws, CPU, GPU, RAM e VRAM, e também o console, a resolução (interna → saída), o
+>   upscaler e a geração de quadros.
+> - **Upscaler e geração de quadros (FG):** no launcher escolha o upscaler (do jogo, AMD FSR 3.1 ou NVIDIA DLSS), a resolução
+>   interna e o FG (AMD FSR 3 2x em qualquer placa; DLSS 2x a 6x nas RTX 40/50). No jogo, **F1** abre as opções: o FG liga e
+>   desliga na hora; o resto vale ao reiniciar ("Salvar e reiniciar agora" reabre o jogo sozinho). O DLSS precisa dos arquivos
+>   da NVIDIA: botão "Baixar arquivos do DLSS" no launcher (ou `Get-NVIDIA-DLSS.cmd`).
 > - **Mouse:** clique na imagem (ou F9) para olhar com o mouse; F9 ou Alt+Tab solta. WASD anda, botão esquerdo/direito =
 >   atirar/mirar, Espaço ou Enter = A.
 > - **Placa de 8 GB:** escolha "8 GB" no launcher.
@@ -60,6 +67,10 @@ slower while it writes down the pipelines the game uses. On the next start, the 
 | **Performance overlay** | On by default; F10 shows or hides it in the game. |
 | **Graphics card** | "12 GB or more" (full textures) or "8 GB" (the top texture level dropped). |
 | **Mouse** | Mouse look speed, or off. |
+| **Upscaler** | The game's own (its console FSR, which takes the Quality size only), AMD FSR 3.1 for PC (any card; shipped in `fidelityfx`) or NVIDIA DLSS (RTX cards, with NVIDIA's files). |
+| **Resolution** | The scene's size against the picture's: Quality 67%, Balanced 59%, Performance 50%, Ultra performance 33% or Native. On this title the frame is mostly CPU work, so a smaller scene helps less than on most games. |
+| **Frame gen** | Off, AMD FSR 3 (2x; picks AMD FSR 3.1 as the upscaler) or DLSS 2x to 6x (RTX 40/50; 3x and more need an RTX 50). |
+| **Get the DLSS files** | Runs `Get-NVIDIA-DLSS.cmd`, which fetches NVIDIA's Streamline, DLSS and DLSS frame generation files (~70 MB) from NVIDIA's GitHub into `nvidia-sdk`. They are under NVIDIA's licences and do not come with opti-vicity. |
 | **Prepare shaders** | Translates the shaders and compiles the pipelines ahead without starting the game. |
 | **Play** | Prepares first when this build needs it, then starts the game. The launcher minimizes and comes back when the game closes. |
 | **Logs** | Opens the folder with `game.log` and `prepare.log`. Send them along with a bug report. |
@@ -99,6 +110,7 @@ same time.
 | Z / C | Left / right trigger (keys). |
 | Esc / Tab | Menu / View. |
 | Arrows | D-pad. |
+| F1 | The options menu (arrows pick and change, Enter confirms, F1 or Esc closes). The game gets no keys or mouse while it is open; a controller still works. |
 | F10 | Show or hide the overlay. |
 
 The mouse works like a stick, not a direct camera: about 1,000 pixels a second pushes the stick to its end, and the
@@ -130,6 +142,19 @@ it:
   - Space as A, and Shift/Ctrl as stick clicks;
   - `VICTORY_MOUSE` scales the mouse, and 0 turns it off.
 - **Build label** (`crates/victory-gpu/build.rs`): it follows the current commit.
+- **Upscaling and frame generation:**
+  - **AMD FSR 3.1 for PC** (`crates/victory-hle/src/modules/fidelityfx.rs`): serves the title's FidelityFX calls, at any render
+    scale (`apps/victory/src/render_scale.rs` patches the title's render size, after trustno1's VIctory-NVIDIA).
+  - **AMD FSR 3 frame generation** (`crates/victory-gpu/src/framegen.rs`, after gleaf-6's VIctory-7900XTX): AMD's frame
+    generation swap chain, fed by each upscaling. With FSR it is always made ready, so the F1 menu can switch it at once.
+  - **NVIDIA DLSS and DLSS frame generation** (`crates/victory-gpu/src/streamline.rs`, `crates/victory-hle/src/modules/dlss.rs`):
+    trustno1's VIctory-NVIDIA port through NVIDIA Streamline. DLSS frame generation needs an RTX 40/50 and hardware GPU
+    scheduling; where it is missing it turns itself off and DLSS upscaling still runs.
+  - Switches: `VICTORY_FIDELITYFX_DIR`, `VICTORY_RENDER_SCALE`, `VICTORY_FRAMEGEN=amd|dlss`, `VICTORY_FRAMEGEN_START`,
+    `VICTORY_DLSS`, `VICTORY_DLSS_MODE`, `VICTORY_STREAMLINE_DIR`, `VICTORY_FRAMEGEN_X`. The launcher sets them.
+- **F1 options menu** (`crates/victory-gpu/src/menu.rs`, drawn by the overlay thread), after VIctory-NVIDIA's: frame
+  generation (live), upscaler, render scale, console and the overlay; saved into `launcher.ini`, and "save and restart"
+  ends the game with code 82 for the launcher to start it again.
 
 ## Build from source
 
@@ -217,6 +242,8 @@ opti-vicity stands on these projects. Their READMEs are kept in
 | [Yaekai/victory-scarlett-3070](https://github.com/Yaekai/victory-scarlett-3070) | The base of opti-vicity: NVIDIA heap fixes, visual fixes, the 60 fps unlock and the `play-3070` settings. |
 | [Dolberthi/neptune-dolberth-nvidia-8gb](https://github.com/Dolberthi/neptune-dolberth-nvidia-8gb) | The performance overlay. The overlay itself is by zm0kie. |
 | [zm0kiemedia/Neptune_VI](https://github.com/zm0kiemedia/Neptune_VI) | Mouse look and mouse buttons on the stand-in controller. |
+| [trustno1-coder/VIctory-NVIDIA](https://github.com/trustno1-coder/VIctory-NVIDIA) | DLSS and DLSS frame generation through NVIDIA Streamline, the render-scale patch, the F1 settings menu it inspired, and `Get-NVIDIA-DLSS.cmd`. |
+| [gleaf-6/VIctory-7900XTX-](https://github.com/gleaf-6/VIctory-7900XTX-) | AMD FSR 3 frame generation on the host. |
 
 The git history keeps the line: `ee36438` imports Yaekai's master as it was on 2026-11-26, and the commits after it are
 opti-vicity's.

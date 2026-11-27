@@ -7,6 +7,8 @@ mod census;
 mod inspect;
 #[cfg(all(windows, feature = "diagnostics"))]
 mod replay;
+#[cfg(windows)]
+mod render_scale;
 mod run;
 mod shader;
 mod translate;
