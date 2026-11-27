@@ -3035,7 +3035,7 @@ pub(crate) fn housekeeping() {
          let go for room {} MB ({} MB in the last 5 s), made again {} MB ({} MB in the last 5 s); windows {} alive {} MB, let go {} MB; \
          free RAM {} MB; let go on a real unmap {} ({} MB), held at a sweep {} times, mapped again {} (VICTORY_UNMAP_EXACT={}); \
          title memory really unmapped {} MB in {} calls; out-of-memory fallback ran 0 times (none in this base; host memory \
-         pressure {}); windows let go on unmap {} ({} MB) (VICTORY_WINDOW_UNMAP={}); host lists idle {}, let go as idle {}          (VICTORY_LIST_POOL_IDLE_S), taken at a first recording {} (VICTORY_LAZY_HOST_LIST={}); \
+         pressure {}); windows let go on unmap {} ({} MB) (VICTORY_WINDOW_UNMAP={}); host lists idle {}, let go as idle {}          (VICTORY_LIST_POOL_IDLE_S), taken at a first recording {} (VICTORY_LAZY_HOST_LIST={}); idle send buffers let go {} ({} MB) (VICTORY_SEND_IDLE_S); \
          room rule let go {} ({} MB) in {} sweeps, raw guard ran {} s (VICTORY_VRAM_RAW_PCT={}); texture blocks {} alive ({} empty, {} given back this run); \
          heaps by occupancy: <25 % {}, 25–50 % {}, 50–75 % {}, >75 % {}; free space inside heaps {} MB; \
          copies let go to empty a sparse heap {} ({} MB) (VICTORY_HEAP_PACK={})",
@@ -3068,6 +3068,8 @@ pub(crate) fn housekeeping() {
         crate::list::IDLE_LET_GO.load(Relaxed),
         crate::list::LAZY_MADE.load(Relaxed),
         u8::from(crate::list::lazy_host()),
+        crate::host::send_idle_let_go()[0],
+        crate::host::send_idle_let_go()[1] >> 20,
         ROOM_LET_GO[0].load(Relaxed),
         mb(ROOM_LET_GO[1].load(Relaxed)),
         ROOM_LET_GO[2].load(Relaxed),

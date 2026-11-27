@@ -759,6 +759,45 @@ fn log_memory_map() {
     }
 }
 
+/// (With the memory map) The process's heaps by committed bytes: the
+/// default heap, which our own allocations use ([`Counting`]), apart from
+/// the heaps others made (the driver, the runtime, libraries), so what of
+/// the heap segments is ours and what is theirs can be told.
+fn log_heaps() {
+    use windows_sys::Win32::Foundation::HANDLE;
+    use windows_sys::Win32::System::Memory::{GetProcessHeap, GetProcessHeaps, HEAP_SUMMARY, HeapSummary};
+    let mut heaps: Vec<HANDLE> = vec![std::ptr::null_mut(); 256];
+    // SAFETY: a buffer of that many handles.
+    let n = unsafe { GetProcessHeaps(heaps.len() as u32, heaps.as_mut_ptr()) } as usize;
+    heaps.truncate(n.min(256));
+    // SAFETY: plain query.
+    let default = unsafe { GetProcessHeap() };
+    let mut sums: Vec<(bool, usize, usize, usize)> = heaps
+        .iter()
+        .filter_map(|&h| {
+            let mut s = HEAP_SUMMARY { cb: size_of::<HEAP_SUMMARY>() as u32, ..Default::default() };
+            // SAFETY: a heap of this process; a summary sized for the call.
+            (unsafe { HeapSummary(h, 0, &mut s) } != 0).then_some((h == default, s.cbCommitted, s.cbAllocated, h as usize))
+        })
+        .collect();
+    sums.sort_by_key(|s| std::cmp::Reverse(s.1));
+    let mb = |b: usize| b >> 20;
+    let others: usize = sums.iter().filter(|s| !s.0).map(|s| s.1).sum();
+    let listed: Vec<String> = sums
+        .iter()
+        .take(8)
+        .map(|&(d, c, a, h)| format!("{}{h:#x} {} MB committed, {} MB in use", if d { "default " } else { "" }, mb(c), mb(a)))
+        .collect();
+    tracing::info!(
+        "memory map, the process's heaps: {} heaps; the default heap (ours and others') {} MB committed; the others {} MB committed; biggest: {}; our own allocations {} MB",
+        sums.len(),
+        mb(sums.iter().find(|s| s.0).map_or(0, |s| s.1)),
+        mb(others),
+        listed.join("; "),
+        mb((0..4).map(owned).sum::<u64>() as usize)
+    );
+}
+
 /// Logs where the memory is: the process and the PC, then what this crate
 /// holds by kind (alive now), then the host buffers made since the start.
 fn log_memory() {
@@ -790,6 +829,7 @@ fn log_memory() {
     if every != 0 && LINES.fetch_add(1, Relaxed) % every == every - 1 && !WALKING.swap(true, Relaxed) {
         let walk = std::thread::Builder::new().name("victory-memory-map".into()).spawn(|| {
             log_memory_map();
+            log_heaps();
             WALKING.store(false, Relaxed);
         });
         if walk.is_err() {

@@ -218,6 +218,65 @@ pub(super) fn give_back(mut memory: Memory) {
     }
 }
 
+/// (`VICTORY_SEND_IDLE_S`, 30 unless set; 0 keeps them, as before) Spare
+/// send memory given back this long ago goes, but for the most recently
+/// given up to [`IDLE_FLOOR`]. What a burst made (a scene's loading) stayed
+/// spare for the whole run: 13 buffers, 704 MB, the oldest idle 110 s, in
+/// a gameplay run, each an upload buffer and so commit and write-combined
+/// memory, while a frame sends 73-93 MB at most.
+fn idle_ms() -> u64 {
+    static S: OnceLock<u64> = OnceLock::new();
+    *S.get_or_init(|| {
+        std::env::var("VICTORY_SEND_IDLE_S").ok().and_then(|v| v.trim().parse::<u64>().ok()).map_or(30, |s| s.min(3600))
+    }) * 1000
+}
+
+/// Spare send memory kept however long it is idle: what a frame sends.
+const IDLE_FLOOR: u64 = 128 << 20;
+
+/// Send memory let go as idle since the start: buffers, bytes.
+pub(crate) static IDLE_LET_GO: [std::sync::atomic::AtomicU64; 2] = [const { std::sync::atomic::AtomicU64::new(0) }; 2];
+
+/// Lets idle spare send memory go ([`idle_ms`]); called once a second by the
+/// sweep. Spare memory is in no submission, so it goes at once.
+pub(crate) fn let_go_idle() {
+    let ms = idle_ms();
+    if ms == 0 {
+        return;
+    }
+    let now = now_ms();
+    let gone: Vec<Memory> = {
+        let mut spare = SPARE.lock().unwrap_or_else(|e| e.into_inner());
+        if spare.iter().all(|m| now.saturating_sub(m.given) < ms) {
+            return;
+        }
+        // The most recently given first: kept while under the floor, or
+        // while not idle long enough.
+        let mut all: Vec<Memory> = std::mem::take(&mut *spare);
+        all.sort_by_key(|m| std::cmp::Reverse(m.given));
+        let (mut kept, mut gone) = (0u64, Vec::new());
+        for m in all {
+            if now.saturating_sub(m.given) < ms || kept + m.size <= IDLE_FLOOR {
+                kept += m.size;
+                spare.push(m);
+            } else {
+                gone.push(m);
+            }
+        }
+        spare.sort_by_key(|m| std::cmp::Reverse(m.size));
+        gone
+    };
+    if gone.is_empty() {
+        return;
+    }
+    let bytes: u64 = gone.iter().map(|m| m.size).sum();
+    IDLE_LET_GO[0].fetch_add(gone.len() as u64, Ordering::Relaxed);
+    IDLE_LET_GO[1].fetch_add(bytes, Ordering::Relaxed);
+    let n = gone.len();
+    drop(gone);
+    crate::host::trail(|| format!("sweep: {n} idle spare send buffers let go ({} MB)", bytes >> 20));
+}
+
 /// Since the last frame-rate line: bytes copied, runs copied, words stored,
 /// microseconds of taking them out of the CPU sides.
 pub(super) static STATS: [std::sync::atomic::AtomicU64; 4] = [const { std::sync::atomic::AtomicU64::new(0) }; 4];

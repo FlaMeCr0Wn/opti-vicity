@@ -451,6 +451,8 @@ fn sweep() {
     crate::resource::let_go_idle();
     // (Fox port C, `VICTORY_LIST_POOL_IDLE_S`) Idle host lists and their allocators.
     crate::list::let_go_idle_lists();
+    // (`VICTORY_SEND_IDLE_S`) Spare send memory a burst left.
+    send::let_go_idle();
     // (Fox port C) The housekeeping line, every five seconds.
     crate::resource::housekeeping();
 }
@@ -11946,3 +11948,9 @@ mod batch {   // Batch::texture_due lives here; `mod tests` is already taken at 
     }
 }
 
+
+/// Spare send memory let go as idle since the start: buffers, bytes
+/// (`VICTORY_SEND_IDLE_S`).
+pub(crate) fn send_idle_let_go() -> [u64; 2] {
+    [send::IDLE_LET_GO[0].load(Ordering::Relaxed), send::IDLE_LET_GO[1].load(Ordering::Relaxed)]
+}
